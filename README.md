@@ -24,6 +24,7 @@ The easiest way to get your own instance running in the cloud:
 2.  **Configure Secrets**: In your new Space, go to **Settings > Variables and secrets** and add:
     - `STEAM_WEB_API_KEY`: Your API Key from [Steam Community](https://steamcommunity.com/dev/apikey).
     - `STEAM_ID`: Your 64-bit Steam ID.
+    - `ITAD_API_KEY`: **(New)** Your key from [IsThereAnyDeal](https://isthereanydeal.com/apps/api/) for price history.
     - `MCP_TOKEN`: **(Required for Security)** A secret string used as your Bearer Token.
     - `STEAM_COUNTRY_CODE`: (Optional) Your 2-letter country code (e.g., `US`, `IN`).
 3.  **Deploy**: Hit save. The Space will build and launch your private MCP server automatically.
@@ -78,16 +79,13 @@ Add a new MCP server in your IDE settings (JSON mode):
 3. Set **Authentication Type** to `API Key` (or Bearer Token) and paste your `MCP_TOKEN`.
 
 
-### 4. Antigravity
-Add this to your `claude_desktop_config.json`:
-
 ```json
 {
   "mcpServers": {
     "steam-tracker": {
       "serverUrl": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp"
     }
-/* Note: Configure headers in your Antigravity MCP settings if available */
+/* Note: Provide your MCP_TOKEN as the 'API Key' or 'Authorization' header in settings */
   }
 }
 ```
@@ -107,6 +105,9 @@ Add this to your `claude_desktop_config.json`:
 | **Stats** | `get_achievement_stats`| "Show me my rarest achievements in Cyberpunk 2077." |
 | | `get_live_player_count`| "How many people are playing Helldivers 2 right now?" |
 | **News** | `get_game_news` | "Summarize the latest patch notes for Dota 2." |
+| **Price IQ** | `get_historical_stats` | "What is the all-time low for Elden Ring?" |
+| | `get_price_history` | "Show me the price chart for Cyberpunk 2077." |
+| | `get_global_deals` | "Compare Elden Ring prices on Epic, GOG, and Steam." |
 
 ---
 
