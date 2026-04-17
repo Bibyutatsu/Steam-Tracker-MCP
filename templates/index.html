@@ -45,7 +45,7 @@
                     <div class="auth-note-icon">!</div>
                     <div class="auth-note-content">
                         <h3>Authentication Required</h3>
-                        <p>This server is protected for your security. You must append your <span class="token-highlight">MCP_TOKEN</span> (configured in your Space Secrets) to your connection URLs using the <span class="token-highlight">?token=</span> parameter.</p>
+                        <p>This server is protected via industry-standard <strong>Bearer Token</strong> authentication. You must provide your <span class="token-highlight">MCP_TOKEN</span> in the <code>Authorization</code> header of your requests.</p>
                     </div>
                 </div>
 
@@ -70,19 +70,24 @@
 
             <section id="claude">
                 <h2>Claude Desktop</h2>
-                <p>The standard way to connect to any SSE-enabled MCP server. Add the following entry to your configuration file:</p>
+                <p>Since Claude Desktop does not natively support HTTP headers for SSE, use a proxy bridge to connect securely:</p>
                 <div class="code-container">
                     <pre>
 {
   "mcpServers": {
     "steam-intelligence": {
-      "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/sse?token=YOUR_TOKEN"
+      "command": "npx",
+      "args": [
+        "-y",
+        "@atishay/mcp-proxy",
+        "--url",
+        "https://bibyutatsu-steam-tracker-mcp.hf.space/sse",
+        "--header",
+        "Authorization: Bearer YOUR_TOKEN"
+      ]
     }
   }
 }</pre>
-                </div>
-                <div class="btn-group">
-                    <button class="btn btn-secondary" onclick="openConfig()">Open Config Folder</button>
                 </div>
             </section>
 
@@ -90,7 +95,7 @@
                 <h2>Cursor / Windsurf</h2>
                 <p>For IDEs that support direct URL connection strings, use the optimized integration path:</p>
                 <div class="code-container">
-                    <pre id="mcp-url">https://bibyutatsu-steam-tracker-mcp.hf.space/mcp?token=YOUR_TOKEN</pre>
+                    <pre id="mcp-url">https://bibyutatsu-steam-tracker-mcp.hf.space/mcp</pre>
                 </div>
                 <div class="btn-group">
                     <button class="btn" onclick="copyUrl()">Copy Integration URL</button>
@@ -99,9 +104,10 @@
 
             <section id="perplexity">
                 <h2>Perplexity</h2>
-                <p>Enhance your Perplexity research sessions with live Steam data using the MCP Connector.</p>
-                <p>1. Install the <a href="https://github.com/perplexity-ai/perplexity-mcp-helper" target="_blank" style="color: var(--accent); font-weight: 500;">PerplexityXPC Helper</a>.</p>
-                <p>2. Navigate to <strong>Account Settings > Connectors</strong> and use the URL from the section above.</p>
+                <p>Connect securely using Perplexity's built-in authentication support:</p>
+                <p>1. Go to <strong>Account Settings > Connectors</strong>.</p>
+                <p>2. Add a new Connector with the URL: <code>https://bibyutatsu-steam-tracker-mcp.hf.space/mcp</code></p>
+                <p>3. Set <strong>Authentication Type</strong> to <code>API Key</code> (or Bearer Token) and paste your <span class="token-highlight">MCP_TOKEN</span>.</p>
             </section>
         </div>
     </main>
@@ -110,7 +116,7 @@
         function copyUrl() {
             const url = document.getElementById('mcp-url').innerText;
             navigator.clipboard.writeText(url);
-            alert('Copied to clipboard!\nRemember to replace YOUR_TOKEN with your secret.');
+            alert('Copied to clipboard!\nIntegration URL: ' + url);
         }
         function openConfig() {
             alert('To find your config, navigate to: \n\nmacOS: ~/Library/Application Support/Claude/claude_desktop_config.json\nWindows: %APPDATA%/Claude/claude_desktop_config.json');

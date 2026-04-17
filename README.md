@@ -24,7 +24,7 @@ The easiest way to get your own instance running in the cloud:
 2.  **Configure Secrets**: In your new Space, go to **Settings > Variables and secrets** and add:
     - `STEAM_WEB_API_KEY`: Your API Key from [Steam Community](https://steamcommunity.com/dev/apikey).
     - `STEAM_ID`: Your 64-bit Steam ID.
-    - `MCP_TOKEN`: **(Required for Security)** A secret string to prevent unauthorized use of your server.
+    - `MCP_TOKEN`: **(Required for Security)** A secret string used as your Bearer Token.
     - `STEAM_COUNTRY_CODE`: (Optional) Your 2-letter country code (e.g., `US`, `IN`).
 3.  **Deploy**: Hit save. The Space will build and launch your private MCP server automatically.
 
@@ -55,7 +55,8 @@ Add this to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "steam-tracker": {
-      "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp?token=YOUR_TOKEN"
+      "command": "npx",
+      "args": ["-y", "@atishay/mcp-proxy", "--url", "https://bibyutatsu-steam-tracker-mcp.hf.space/sse", "--header", "Authorization: Bearer YOUR_TOKEN"]
     }
   }
 }
@@ -66,14 +67,15 @@ Add a new MCP server in your IDE settings (JSON mode):
 
 ```json
 "steam-tracker": {
-  "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp?token=YOUR_TOKEN"
+  "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp"
 }
+/* Note: You must configure the Authorization header in your IDE's MCP settings */
 ```
 
 ### 3. Perplexity
-1. Install the [PerplexityXPC Helper](https://github.com/perplexity-ai/perplexity-mcp-helper).
-2. Go to **Account Settings > Connectors**.
-3. Add a new Connector using the URL: `https://bibyutatsu-steam-tracker-mcp.hf.space/mcp?token=YOUR_TOKEN`
+1. Go to **Account Settings > Connectors**.
+2. Add a new Connector using the URL: `https://bibyutatsu-steam-tracker-mcp.hf.space/mcp`
+3. Set **Authentication Type** to `API Key` (or Bearer Token) and paste your `MCP_TOKEN`.
 
 
 ### 4. Antigravity
@@ -83,8 +85,9 @@ Add this to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "steam-tracker": {
-      "serverUrl": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp?token=YOUR_TOKEN"
+      "serverUrl": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp"
     }
+/* Note: Configure headers in your Antigravity MCP settings if available */
   }
 }
 ```

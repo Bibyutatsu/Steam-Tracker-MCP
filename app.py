@@ -1,10 +1,20 @@
 import os
 import uvicorn
+import logging
+import time
 from starlette.responses import HTMLResponse, Response, JSONResponse
 from starlette.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from server import mcp
 from steam_api import get_and_cache_profile_image
+
+# Configure safe logging (replaces Uvicorn's aggressive access logs)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger("mcp-server")
 
 # Configuration
 STEAM_ID = os.getenv("STEAM_ID")
@@ -19,35 +29,37 @@ if os.path.exists("static"):
 
 def is_authorized(request):
     """
-    Checks if the request is authorized via query param or header.
+    Checks if the request is authorized via Header ONLY.
     If MCP_TOKEN is not set in environment, authentication is disabled.
     """
     if not MCP_TOKEN:
         return True
     
-    # Check query parameter (most compatible with Perplexity/Claude/Browser)
-    token = request.query_params.get("token")
-    if token == MCP_TOKEN:
-        return True
-        
-    # Check Authorization header (standard practice)
+    # Strictly check Authorization header (standard practice)
     auth_header = request.headers.get("Authorization")
     if auth_header and (auth_header == f"Bearer {MCP_TOKEN}" or auth_header == MCP_TOKEN):
         return True
     
-    # Check custom X-Token header
-    if request.headers.get("X-Token") == MCP_TOKEN:
+    # Strictly check custom X-API-Key header
+    if request.headers.get("X-API-Key") == MCP_TOKEN:
         return True
         
     return False
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        # We only protect the MCP communication endpoints
+        # Only protect the MCP communication endpoints
         if request.url.path in ["/mcp", "/sse"]:
             if not is_authorized(request):
-                return Response("Unauthorized: Missing or invalid token. Use ?token=YOUR_TOKEN", status_code=401)
-        return await call_next(request)
+                client_ip = request.client.host if request.client else "unknown"
+                logger.warning(f"Unauthorized {request.method} to {request.url.path} from {client_ip}")
+                return Response("Unauthorized: Missing or invalid Authorization header.", status_code=401)
+            
+            # Log success without exposing any tokens or query params
+            logger.info(f"Authorized {request.method} {request.url.path}")
+
+        response = await call_next(request)
+        return response
 
 # Add middleware
 app.add_middleware(AuthMiddleware)
@@ -89,9 +101,10 @@ app.add_route("/sse", mcp_alias)
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 7860))
     if not MCP_TOKEN:
-        print("WARNING: MCP_TOKEN not set. Server is in PUBLIC mode.")
+        logger.warning("MCP_TOKEN not set. Server is in PUBLIC mode.")
     else:
-        print("SUCCESS: MCP_TOKEN configured. Authentication is ACTIVE.")
+        logger.info("MCP_TOKEN configured. Strict Header Authentication is ACTIVE.")
         
-    print(f"Starting Steam Intelligence MCP server on 0.0.0.0:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")
+    logger.info(f"Starting Steam Intelligence MCP server on 0.0.0.0:{port}")
+    # Disable default access_log to prevent token leaks from URL fallbacks
+    uvicorn.run(app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*", access_log=False)
