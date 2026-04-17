@@ -97,8 +97,10 @@ Add this to your `claude_desktop_config.json`:
 | Category | Tool | Command Your AI to... |
 | :--- | :--- | :--- |
 | **Store** | `get_game_prices` | "Compare the price of Elden Ring in India vs USA." |
+| | `get_bulk_prices` | "Get prices for Elden Ring, Sekiro, and Dark Souls 3." |
 | | `get_top_specials` | "What are the biggest deals on the Steam frontpage?" |
 | **Library**| `get_my_wishlist` | "Sort my wishlist by the highest discount percentage." |
+| | `get_library_valuation`| "Calculate my total library value and 'Pile of Shame'." |
 | | `analyze_my_library`| "Analyze my library and tell me my top 5 games by playtime." |
 | **Social** | `get_friends` | "Is anyone currently playing Counter-Strike?" |
 | | `get_player_info` | "Check the status of SteamID 765611..." |

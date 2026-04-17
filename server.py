@@ -1,4 +1,5 @@
 import os
+import asyncio
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from steam_api import (
@@ -26,8 +27,7 @@ async def get_game_prices(query: str) -> str:
     """
     Search for Steam games by name and return their current prices and details.
     """
-    # Use the detected country code for local results
-    results = search_games(query, country_code=COUNTRY_CODE)
+    results = await search_games(query, country_code=COUNTRY_CODE)
     
     if not results:
         return f"No matching games found for '{query}' in region '{COUNTRY_CODE}'."
@@ -42,7 +42,6 @@ async def get_game_prices(query: str) -> str:
         
         formatted_price = format_price(price_info)
         
-        # Check if it's on sale
         discount_percent = 0
         if price_info:
             initial = price_info.get("initial", 0)
@@ -72,22 +71,15 @@ async def get_my_wishlist(sort_by_discount: bool = True) -> str:
     if not STEAM_ID:
         return "STEAM_ID not configured in .env."
     
-    # 1. Get AppIDs from official Web API
-    wishlist_items = get_official_wishlist(STEAM_ID)
+    wishlist_items = await get_official_wishlist(STEAM_ID)
     if not wishlist_items:
-        return f"No wishlist items found for Steam ID {STEAM_ID} via official API. Check your privacy settings."
+        return f"No wishlist items found for Steam ID {STEAM_ID} via official API."
         
     appids = [item.get("appid") for item in wishlist_items]
     
-    # 2. Get details in batches (Steam allows ~200 at once, but we'll do 50 to be safe)
-    batch_size = 50
-    all_details = {}
-    for i in range(0, len(appids), batch_size):
-        chunk = appids[i:i + batch_size]
-        details = get_apps_details_batch(chunk, country_code=COUNTRY_CODE)
-        all_details.update(details)
+    # Use optimized batcher
+    all_details = await get_apps_details_batch(appids, country_code=COUNTRY_CODE)
     
-    # 3. Process and format
     items = []
     for appid_str, result in all_details.items():
         if not result.get("success"):
@@ -105,7 +97,6 @@ async def get_my_wishlist(sort_by_discount: bool = True) -> str:
             "currency": price_overview.get("currency", "")
         })
     
-    # 4. Sort
     if sort_by_discount:
         items.sort(key=lambda x: x["discount"], reverse=True)
     else:
@@ -119,6 +110,121 @@ async def get_my_wishlist(sort_by_discount: bool = True) -> str:
         
         line = f"- **[{item['name']}](https://store.steampowered.com/app/{item['appid']})**: {status}"
         response.append(line)
+        
+    return "\n".join(response)
+
+@mcp.tool()
+async def get_library_valuation() -> str:
+    """
+    Calculate the total value and health of your entire Steam library.
+    Provides current value, original value, and playtime metrics.
+    """
+    if not STEAM_ID:
+        return "STEAM_ID not configured in .env."
+
+    # 1. Fetch owned games
+    games = await get_owned_games(STEAM_ID)
+    if not games:
+        return "Could not retrieve library. Profile may be private."
+
+    appids = [g["appid"] for g in games]
+    
+    # 2. Fetch prices in batches (using cache automatically)
+    all_prices = await get_apps_details_batch(appids, country_code=COUNTRY_CODE)
+    
+    total_current = 0
+    total_initial = 0
+    total_playtime_mins = 0
+    never_played_count = 0
+    currency = ""
+
+    for g in games:
+        appid = str(g["appid"])
+        total_playtime_mins += g.get("playtime_forever", 0)
+        if g.get("playtime_forever", 0) == 0:
+            never_played_count += 1
+            
+        price_data = all_prices.get(appid, {}).get("data") or {}
+        price_info = price_data.get("price_overview")
+        if price_info:
+            total_current += price_info.get("final", 0)
+            total_initial += price_info.get("initial", price_info.get("final", 0))
+            if not currency:
+                currency = price_info.get("currency", "")
+
+    total_hours = round(total_playtime_mins / 60, 1)
+    account_value_curr = total_current / 100
+    account_value_init = total_initial / 100
+    pile_of_shame_pct = round((never_played_count / len(games)) * 100, 1)
+    
+    avg_per_hour = 0
+    if total_hours > 0:
+        avg_per_hour = account_value_curr / total_hours
+
+    response = [
+        f"## 📊 Steam Library Valuation: `{STEAM_ID}`",
+        f"**Region**: {COUNTRY_CODE}\n",
+        f"### 💰 Financial Breakdown",
+        f"- **Total Current Value**: **{account_value_curr:.2f} {currency}** (at today's prices)",
+        f"- **Total Original Value**: **{account_value_init:.2f} {currency}** (if bought full price)",
+        f"- **Approx. Savings**: {(account_value_init - account_value_curr):.2f} {currency}\n",
+        f"### 🎮 Gameplay Statistics",
+        f"- **Total Games Owned**: **{len(games)}**",
+        f"- **Total Time Playing**: **{total_hours:,} hours**",
+        f"- **Pile of Shame**: **{never_played_count} games** ({pile_of_shame_pct}% never played)",
+        f"- **Avg. Cost per Hour**: **{avg_per_hour:.2f} {currency}/hr**\n",
+        f"---",
+        f"*Note: Calculations are based on current store prices. Some delisted or removed games may not have price data available.*"
+    ]
+    
+    return "\n".join(response)
+
+@mcp.tool()
+async def get_bulk_prices(queries: list[str]) -> str:
+    """
+    Get current prices and deals for a list of game names or AppIDs.
+    Example: queries=["Elden Ring", "730", "Cyberpunk 2077"]
+    """
+    # 1. Resolve queries to AppIDs
+    resolved_appids = []
+    
+    async def resolve_one(q):
+        if q.isdigit():
+            return int(q), q
+        results = await search_games(q, country_code=COUNTRY_CODE)
+        if results:
+            return results[0]["id"], results[0]["name"]
+        return None, q
+
+    resolutions = await asyncio.gather(*[resolve_one(q) for q in queries])
+    
+    appids_to_fetch = [r[0] for r in resolutions if r[0]]
+    names_map = {str(r[0]): r[1] for r in resolutions if r[0]}
+    
+    if not appids_to_fetch:
+        return "Could not resolve any of the provided queries."
+
+    # 2. Fetch prices in batch
+    prices_data = await get_apps_details_batch(appids_to_fetch, country_code=COUNTRY_CODE)
+    
+    response = [f"### 🏷️ Bulk Price Results ({COUNTRY_CODE}):\n"]
+    
+    for appid_str, result in prices_data.items():
+        name = names_map.get(appid_str, f"AppID {appid_str}")
+        if not result.get("success"):
+            response.append(f"- **{name}**: Data not available.")
+            continue
+            
+        data = result.get("data", {})
+        price_overview = data.get("price_overview", {})
+        
+        formatted = format_price(price_overview)
+        discount = price_overview.get("discount_percent", 0)
+        status = f"**{formatted}**"
+        if discount > 0:
+            status += f" (-{discount}%)"
+            
+        response.append(f"- **{name}** ([Store](https://store.steampowered.com/app/{appid_str})): {status}")
         
     return "\n".join(response)
 
@@ -137,7 +243,7 @@ async def get_live_player_count(appid: int) -> str:
     """
     Get the number of players currently playing a game on Steam.
     """
-    count = get_current_players(appid)
+    count = await get_current_players(appid)
     if count is None:
         return f"Could not retrieve player count for AppID {appid}."
     return f"There are currently **{count:,}** players in-game for AppID `{appid}`."
@@ -147,7 +253,7 @@ async def get_game_news(appid: int, count: int = 3) -> str:
     """
     Get the latest news and patch notes for a specific Steam game.
     """
-    news_items = get_app_news(appid, count)
+    news_items = await get_app_news(appid, count)
     if not news_items:
         return f"No news found for AppID {appid}."
     
@@ -156,7 +262,6 @@ async def get_game_news(appid: int, count: int = 3) -> str:
         title = item.get("title", "No Title")
         url = item.get("url", "#")
         author = item.get("author", "Unknown")
-        # Strip some HTML if present, though Steam usually gives BBCode or clean text
         content = item.get("contents", "")[:500] + "..."
         response.append(f"#### [{title}]({url})")
         response.append(f"By: {author}")
@@ -173,11 +278,10 @@ async def analyze_my_library(sort_by: str = "playtime", limit: int = 15) -> str:
     if not STEAM_ID:
         return "STEAM_ID not configured in .env."
         
-    games = get_owned_games(STEAM_ID)
+    games = await get_owned_games(STEAM_ID)
     if not games:
         return "Could not retrieve your library. Ensure your profile is public or your API key is correct."
         
-    # Process games
     processed_games = []
     for g in games:
         processed_games.append({
@@ -206,7 +310,7 @@ async def resolve_steam_user(vanity_name: str) -> str:
     """
     Resolve a Steam vanity URL name (e.g. 'gabelogannewell') to a 64-bit SteamID.
     """
-    steamid = resolve_vanity_url(vanity_name)
+    steamid = await resolve_vanity_url(vanity_name)
     if not steamid:
         return f"Could not resolve vanity name '{vanity_name}' to a SteamID."
     return f"The SteamID for '{vanity_name}' is: `{steamid}`"
@@ -216,7 +320,7 @@ async def get_player_info(steam_id: str) -> str:
     """
     Get generic profile information for any public SteamID.
     """
-    players = get_player_summaries(steam_id)
+    players = await get_player_summaries(steam_id)
     if not players:
         return f"Could not retrieve profile info for SteamID {steam_id}."
         
@@ -241,7 +345,7 @@ async def get_recent_activity(steam_id: str = None) -> str:
     if not target_id:
         return "No SteamID provided and STEAM_ID not configured."
         
-    games = get_recently_played_games(target_id)
+    games = await get_recently_played_games(target_id)
     if not games:
         return f"No recent activity found for SteamID {target_id} (or profile is private)."
         
@@ -262,13 +366,12 @@ async def get_friends(steam_id: str = None) -> str:
     if not target_id:
         return "No SteamID provided and STEAM_ID not configured."
         
-    friends = get_friend_list(target_id)
+    friends = await get_friend_list(target_id)
     if not friends:
         return f"Could not retrieve friends for `{target_id}` (profile/friend list is private)."
         
-    # Get summaries for these friends to show names
-    friend_ids = ",".join([f["steamid"] for f in friends[:50]]) # Limit to 50 for summary
-    summaries = get_player_summaries(friend_ids)
+    friend_ids = ",".join([f["steamid"] for f in friends[:50]]) 
+    summaries = await get_player_summaries(friend_ids)
     
     response = [f"### Friend List for `{target_id}` ({len(friends)} friends):\n"]
     for p in summaries:
@@ -289,21 +392,17 @@ async def get_achievement_stats(appid: int, steam_id: str = None) -> str:
     if not target_id:
         return "No SteamID provided and STEAM_ID not configured."
         
-    # 1. Get player achievements
-    player_ach = get_player_achievements(target_id, appid)
+    player_ach = await get_player_achievements(target_id, appid)
     if player_ach is None:
         return f"Could not retrieve achievements for AppID {appid} (profile/game data private)."
         
-    # 2. Get global percentages
-    global_ach = get_global_achievement_percentages(appid)
+    global_ach = await get_global_achievement_percentages(appid)
     global_map = {a["name"]: a["percent"] for a in global_ach}
     
-    # 3. Combine
     response = [f"### Achievement Stats for AppID `{appid}`:\n"]
     unlocked = [a for a in player_ach if a.get("achieved") == 1]
     response.append(f"You have unlocked **{len(unlocked)}/{len(player_ach)}** achievements.\n")
     
-    # Show some rare ones or recent ones
     response.append("#### Rare Achievements You've Earned:")
     earned_with_rarity = []
     for a in unlocked:
@@ -321,7 +420,7 @@ async def get_top_specials() -> str:
     """
     Get the top featured "Specials" (deals) from the Steam homepage.
     """
-    featured = get_featured_categories()
+    featured = await get_featured_categories()
     specials = featured.get("specials", {}).get("items", [])
     
     if not specials:
@@ -331,7 +430,6 @@ async def get_top_specials() -> str:
     for item in specials:
         name = item.get("name")
         discount = item.get("discount_percent")
-        # Format prices (they are in subunits)
         final = item.get("final_price", 0) / 100
         original = item.get("original_price", 0) / 100
         currency = item.get("currency", "")

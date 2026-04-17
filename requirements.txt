@@ -1,6 +1,6 @@
 mcp
 python-dotenv
-requests
+httpx
 uvicorn
 starlette
 sse-starlette

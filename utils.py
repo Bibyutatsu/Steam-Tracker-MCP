@@ -1,4 +1,4 @@
-import requests
+import httpx
 import os
 import json
 from dotenv import load_dotenv
@@ -39,30 +39,31 @@ def get_country_code():
                 if cached_cc:
                     return cached_cc.upper()
         except (json.JSONDecodeError, IOError):
-            pass # Handle corrupt or unreadable cache
+            pass 
 
     # 3. Live detection
     try:
-        # Get public IP using ipify
-        ip_resp = requests.get("https://api.ipify.org?format=json", timeout=10)
-        ip_resp.raise_for_status()
-        public_ip = ip_resp.json().get("ip")
+        with httpx.Client(timeout=10.0) as client:
+            # Get public IP using ipify
+            ip_resp = client.get("https://api.ipify.org?format=json")
+            ip_resp.raise_for_status()
+            public_ip = ip_resp.json().get("ip")
 
-        if public_ip:
-            # Get country code using ip-api
-            geo_resp = requests.get(f"http://ip-api.com/json/{public_ip}", timeout=10)
-            geo_resp.raise_for_status()
-            country_code = geo_resp.json().get("countryCode")
-            
-            if country_code:
-                country_code = country_code.upper()
-                # Save to cache
-                try:
-                    with open(CACHE_FILE, "w") as f:
-                        json.dump({"country_code": country_code}, f)
-                except IOError:
-                    pass
-                return country_code
+            if public_ip:
+                # Get country code using ip-api
+                geo_resp = client.get(f"http://ip-api.com/json/{public_ip}")
+                geo_resp.raise_for_status()
+                country_code = geo_resp.json().get("countryCode")
+                
+                if country_code:
+                    country_code = country_code.upper()
+                    # Save to cache
+                    try:
+                        with open(CACHE_FILE, "w") as f:
+                            json.dump({"country_code": country_code}, f)
+                    except IOError:
+                        pass
+                    return country_code
     except Exception as e:
         print(f"Error detecting location: {e}")
     

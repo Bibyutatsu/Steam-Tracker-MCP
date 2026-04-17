@@ -1,15 +1,7 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-.venv/
 .env
-
-# MCP Specific
-profile_avatar.png
-
-# IDEs
-.vscode/
-.idea/
-.DS_Store
+.venv/
 .location_cache
+.price_cache.json
+*.png
+.DS_Store

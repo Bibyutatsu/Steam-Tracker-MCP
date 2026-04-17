@@ -1,27 +1,71 @@
-import requests
 import os
+import json
+import time
+import asyncio
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
 STEAM_WEB_API_KEY = os.getenv("STEAM_WEB_API_KEY")
+MOUNT_PATH = os.getenv("MOUNT_PATH", ".")
+
+class PriceCache:
+    """
+    Handles local persistence of game prices to avoid redundant API calls.
+    """
+    def __init__(self, ttl_seconds=86400): # Default 24 hours
+        self.cache_file = os.path.join(MOUNT_PATH, ".price_cache.json")
+        self.ttl = ttl_seconds
+        self.data = self._load_cache()
+
+    def _load_cache(self):
+        if os.path.exists(self.cache_file):
+            try:
+                with open(self.cache_file, "r") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return {}
+        return {}
+
+    def save_cache(self):
+        try:
+            with open(self.cache_file, "w") as f:
+                json.dump(self.data, f)
+        except IOError as e:
+            print(f"Error saving price cache: {e}")
+
+    def get(self, appid, country_code):
+        key = f"{appid}_{country_code}"
+        entry = self.data.get(key)
+        if entry:
+            # Check TTL
+            if time.time() - entry.get("timestamp", 0) < self.ttl:
+                return entry.get("price_data")
+        return None
+
+    def set(self, appid, country_code, price_data):
+        key = f"{appid}_{country_code}"
+        self.data[key] = {
+            "timestamp": time.time(),
+            "price_data": price_data
+        }
+
+price_cache = PriceCache()
 
 async def get_and_cache_profile_image(steam_id, cache_filename="profile_avatar.png"):
     """
     Fetches the Steam profile image and caches it locally.
-    Returns the absolute cache path on success, None on failure.
     Uses MOUNT_PATH from environment if available.
     """
     if not STEAM_WEB_API_KEY or not steam_id:
         return None
     
-    mount_path = os.getenv("MOUNT_PATH", ".")
-    cache_path = os.path.join(mount_path, cache_filename)
+    cache_path = os.path.join(MOUNT_PATH, cache_filename)
     
     # Ensure directory exists
-    if mount_path != "." and not os.path.exists(mount_path):
-        os.makedirs(mount_path, exist_ok=True)
+    if MOUNT_PATH != "." and not os.path.exists(MOUNT_PATH):
+        os.makedirs(MOUNT_PATH, exist_ok=True)
 
     # Check if cache exists
     if os.path.exists(cache_path):
@@ -29,7 +73,6 @@ async def get_and_cache_profile_image(steam_id, cache_filename="profile_avatar.p
 
     try:
         async with httpx.AsyncClient() as client:
-            # Get Player Summaries
             url = f"https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={STEAM_WEB_API_KEY}&steamids={steam_id}"
             response = await client.get(url)
             data = response.json()
@@ -46,7 +89,7 @@ async def get_and_cache_profile_image(steam_id, cache_filename="profile_avatar.p
         print(f"Error fetching profile image: {e}")
     return None
 
-def search_games(term, country_code="US", language="english"):
+async def search_games(term, country_code="US", language="english"):
     """
     Searches the Steam store for games matching the term.
     """
@@ -58,21 +101,27 @@ def search_games(term, country_code="US", language="english"):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get("total", 0) > 0:
-            return data.get("items", [])
-        return []
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            
+            if data.get("total", 0) > 0:
+                return data.get("items", [])
+            return []
     except Exception as e:
         print(f"Error searching Steam store: {e}")
         return []
 
-def get_app_details(appid, country_code="US", language="english"):
+async def get_app_details(appid, country_code="US", language="english"):
     """
     Retrieves detailed information (including precise pricing) for a specific app ID.
+    Uses cache if available.
     """
+    # Check cache first
+    cached = price_cache.get(appid, country_code)
+    if cached:
+        return cached
+
     url = f"https://store.steampowered.com/api/appdetails"
     params = {
         "appids": appid,
@@ -82,25 +131,99 @@ def get_app_details(appid, country_code="US", language="english"):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        app_data = data.get(str(appid))
-        if app_data and app_data.get("success"):
-            return app_data.get("data")
-        return None
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            
+            app_data = data.get(str(appid))
+            if app_data and app_data.get("success"):
+                res_data = app_data.get("data")
+                # Save to cache
+                price_cache.set(appid, country_code, res_data)
+                price_cache.save_cache()
+                return res_data
+            return None
     except Exception as e:
         print(f"Error fetching app details for {appid}: {e}")
         return None
 
-def get_official_wishlist(steam_id):
+async def get_apps_details_batch(appids, country_code="US", language="english"):
+    """
+    Retrieves pricing information for multiple app IDs in optimized batches of 100.
+    """
+    results = {}
+    remaining_appids = []
+
+    # 1. Check cache for all requested IDs
+    for appid in appids:
+        cached = price_cache.get(appid, country_code)
+        if cached:
+            results[str(appid)] = {"success": True, "data": cached}
+        else:
+            remaining_appids.append(appid)
+
+    if not remaining_appids:
+        return results
+
+    # 2. Fetch remaining IDs in chunks of 50 (Steam allows 100, but 50 is more reliable)
+    chunk_size = 50
+    chunks = [remaining_appids[i:i + chunk_size] for i in range(0, len(remaining_appids), chunk_size)]
+
+    async def fetch_chunk(chunk):
+        ids_str = ",".join(map(str, chunk))
+        url = "https://store.steampowered.com/api/appdetails"
+        params = {
+            "appids": ids_str,
+            "cc": country_code,
+            "l": language,
+            "filters": "price_overview" # Mandatory for batching
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, timeout=15.0)
+                if response.status_code == 200:
+                    return response.json() or {}
+                return {}
+        except Exception as e:
+            print(f"Error fetching batch chunk: {e}")
+            return {}
+
+    # Fetch all chunks in parallel (with some concurrency limit if needed, here we just gather)
+    # Using small delay between chunks might help avoid 429
+    chunk_responses = []
+    for chunk in chunks:
+        chunk_responses.append(fetch_chunk(chunk))
+        await asyncio.sleep(0.5) # Gentle rate limiting
+
+    all_responses = await asyncio.gather(*chunk_responses)
+
+    # 3. Process responses and update cache
+    updated_cache = False
+    for resp in all_responses:
+        if not resp: continue
+        for appid_str, result in resp.items():
+            if result.get("success"):
+                data = result.get("data")
+                # Handle the case where 'data' is empty list [] for free games
+                if isinstance(data, list) and not data:
+                    data = {"price_overview": {"final": 0, "initial": 0, "discount_percent": 0, "currency": ""}}
+                
+                results[appid_str] = {"success": True, "data": data}
+                price_cache.set(appid_str, country_code, data)
+                updated_cache = True
+            else:
+                results[appid_str] = {"success": False, "data": None}
+
+    if updated_cache:
+        price_cache.save_cache()
+
+    return results
+
+async def get_official_wishlist(steam_id):
     """
     Retrieves the wishlist AppIDs for a given Steam ID using the official IWishlistService.
-    Requires STEAM_WEB_API_KEY.
     """
     if not STEAM_WEB_API_KEY:
-        print("STEAM_WEB_API_KEY not found.")
         return []
         
     url = "https://api.steampowered.com/IWishlistService/GetWishlist/v1/"
@@ -110,36 +233,19 @@ def get_official_wishlist(steam_id):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", {}).get("items", [])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=15.0)
+            data = response.json()
+            return data.get("response", {}).get("items", [])
     except Exception as e:
         print(f"Error fetching official wishlist for {steam_id}: {e}")
         return []
 
-def get_apps_details_batch(appids, country_code="US", language="english"):
-    """
-    Retrieves detailed information (including prices) for multiple app IDs.
-    Returns a dictionary keyed by appid.
-    Note: Performs individual requests as Steam store batch calls are unreliable.
-    """
-    results = {}
-    for appid in appids:
-        # Reusing single app details function
-        data = get_app_details(appid, country_code=country_code, language=language)
-        results[str(appid)] = {
-            "success": True if data else False,
-            "data": data
-        }
-    return results
-
-def get_player_summaries(steam_ids):
+async def get_player_summaries(steam_ids):
     """
     Fetches basic profile information for a list of Steam IDs.
     """
     if not STEAM_WEB_API_KEY:
-        print("STEAM_WEB_API_KEY not found.")
         return []
         
     url = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/"
@@ -149,10 +255,10 @@ def get_player_summaries(steam_ids):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", {}).get("players", [])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            return data.get("response", {}).get("players", [])
     except Exception as e:
         print(f"Error fetching player summaries: {e}")
         return []
@@ -174,31 +280,29 @@ def format_price(price_obj, currency=""):
     formatted_val = f"{final_price / 100:.2f}"
     return f"{formatted_val} {curr}"
 
-def get_current_players(appid):
+async def get_current_players(appid):
     """
     Fetches exact, real-time live player counts for any Steam AppID.
     """
     url = f"https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/"
     params = {"appid": appid}
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        result = data.get("response", {}).get("result")
-        if result == 1:
-            return data.get("response", {}).get("player_count", 0)
-        return None
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            result = data.get("response", {}).get("result")
+            if result == 1:
+                return data.get("response", {}).get("player_count", 0)
+            return None
     except Exception as e:
         print(f"Error fetching player count for {appid}: {e}")
         return None
 
-def get_owned_games(steam_id):
+async def get_owned_games(steam_id):
     """
     Retrieves a user's entire library along with their exact playtime.
-    Requires STEAM_WEB_API_KEY.
     """
     if not STEAM_WEB_API_KEY:
-        print("STEAM_WEB_API_KEY not found.")
         return []
 
     url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/"
@@ -210,15 +314,15 @@ def get_owned_games(steam_id):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", {}).get("games", [])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=20.0)
+            data = response.json()
+            return data.get("response", {}).get("games", [])
     except Exception as e:
         print(f"Error fetching owned games for {steam_id}: {e}")
         return []
 
-def get_app_news(appid, count=3):
+async def get_app_news(appid, count=3):
     """
     Fetches the latest patch notes, announcements, and developer news for a game.
     """
@@ -231,20 +335,19 @@ def get_app_news(appid, count=3):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("appnews", {}).get("newsitems", [])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            return data.get("appnews", {}).get("newsitems", [])
     except Exception as e:
         print(f"Error fetching news for {appid}: {e}")
         return []
 
-def resolve_vanity_url(vanity_url):
+async def resolve_vanity_url(vanity_url):
     """
     Converts a custom profile URL name to a 64-bit Steam ID.
     """
     if not STEAM_WEB_API_KEY:
-        print("STEAM_WEB_API_KEY not found.")
         return None
         
     url = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/"
@@ -254,17 +357,17 @@ def resolve_vanity_url(vanity_url):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("response", {}).get("success") == 1:
-            return data.get("response", {}).get("steamid")
-        return None
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            if data.get("response", {}).get("success") == 1:
+                return data.get("response", {}).get("steamid")
+            return None
     except Exception as e:
         print(f"Error resolving vanity URL {vanity_url}: {e}")
         return None
 
-def get_recently_played_games(steam_id, count=None):
+async def get_recently_played_games(steam_id, count=None):
     """
     Returns a list of games a player has played in the last two weeks.
     """
@@ -279,15 +382,15 @@ def get_recently_played_games(steam_id, count=None):
     if count:
         params["count"] = count
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", {}).get("games", [])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            return data.get("response", {}).get("games", [])
     except Exception as e:
         print(f"Error fetching recently played games: {e}")
         return []
 
-def get_player_achievements(steam_id, appid, language="english"):
+async def get_player_achievements(steam_id, appid, language="english"):
     """
     Returns a list of achievements a user has unlocked for a specific app.
     """
@@ -302,15 +405,15 @@ def get_player_achievements(steam_id, appid, language="english"):
         "format": "json"
     }
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("playerstats", {}).get("achievements", [])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            return data.get("playerstats", {}).get("achievements", [])
     except Exception as e:
         print(f"Error fetching player achievements: {e}")
         return None
 
-def get_global_achievement_percentages(appid):
+async def get_global_achievement_percentages(appid):
     """
     Returns global completion percentages for achievements in a game.
     """
@@ -320,15 +423,15 @@ def get_global_achievement_percentages(appid):
         "format": "json"
     }
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("achievementpercentages", {}).get("achievements", [])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            return data.get("achievementpercentages", {}).get("achievements", [])
     except Exception as e:
         print(f"Error fetching global achievements: {e}")
         return []
 
-def get_friend_list(steam_id, relationship="friend"):
+async def get_friend_list(steam_id, relationship="friend"):
     """
     Returns the friend list of a Steam user.
     """
@@ -342,32 +445,24 @@ def get_friend_list(steam_id, relationship="friend"):
         "format": "json"
     }
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("friendslist", {}).get("friends", [])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            return data.get("friendslist", {}).get("friends", [])
     except Exception as e:
         print(f"Error fetching friend list: {e}")
         return []
 
-def get_featured_categories(language="english"):
+async def get_featured_categories(language="english"):
     """
     Fetches the featured categories (Specials, Top Sellers, etc.) from the Steam Store Frontpage API.
     """
     url = "https://store.steampowered.com/api/featuredcategories/"
     params = {"l": language}
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        return response.json()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            return response.json()
     except Exception as e:
         print(f"Error fetching featured categories: {e}")
         return {}
-
-if __name__ == "__main__":
-    # Test search
-    results = search_games("Age of Empires", "US")
-    for item in results:
-        name = item.get("name")
-        price = item.get("price", {})
-        print(f"Found: {name} (ID: {item.get('id')}) - Price: {format_price(price)}")
