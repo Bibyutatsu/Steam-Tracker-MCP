@@ -134,6 +134,196 @@ def format_price(price_obj, currency=""):
     formatted_val = f"{final_price / 100:.2f}"
     return f"{formatted_val} {curr}"
 
+def get_current_players(appid):
+    """
+    Fetches exact, real-time live player counts for any Steam AppID.
+    """
+    url = f"https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/"
+    params = {"appid": appid}
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        result = data.get("response", {}).get("result")
+        if result == 1:
+            return data.get("response", {}).get("player_count", 0)
+        return None
+    except Exception as e:
+        print(f"Error fetching player count for {appid}: {e}")
+        return None
+
+def get_owned_games(steam_id):
+    """
+    Retrieves a user's entire library along with their exact playtime.
+    Requires STEAM_WEB_API_KEY.
+    """
+    if not STEAM_WEB_API_KEY:
+        print("STEAM_WEB_API_KEY not found.")
+        return []
+
+    url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/"
+    params = {
+        "key": STEAM_WEB_API_KEY,
+        "steamid": steam_id,
+        "include_appinfo": 1,
+        "format": "json"
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", {}).get("games", [])
+    except Exception as e:
+        print(f"Error fetching owned games for {steam_id}: {e}")
+        return []
+
+def get_app_news(appid, count=3):
+    """
+    Fetches the latest patch notes, announcements, and developer news for a game.
+    """
+    url = "https://api.steampowered.com/ISteamNews/GetNewsForApp/v0002/"
+    params = {
+        "appid": appid,
+        "count": count,
+        "maxlength": 1000,
+        "format": "json"
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("appnews", {}).get("newsitems", [])
+    except Exception as e:
+        print(f"Error fetching news for {appid}: {e}")
+        return []
+
+def resolve_vanity_url(vanity_url):
+    """
+    Converts a custom profile URL name to a 64-bit Steam ID.
+    """
+    if not STEAM_WEB_API_KEY:
+        print("STEAM_WEB_API_KEY not found.")
+        return None
+        
+    url = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/"
+    params = {
+        "key": STEAM_WEB_API_KEY,
+        "vanityurl": vanity_url
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("response", {}).get("success") == 1:
+            return data.get("response", {}).get("steamid")
+        return None
+    except Exception as e:
+        print(f"Error resolving vanity URL {vanity_url}: {e}")
+        return None
+
+def get_recently_played_games(steam_id, count=None):
+    """
+    Returns a list of games a player has played in the last two weeks.
+    """
+    if not STEAM_WEB_API_KEY:
+        return []
+    url = "https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/"
+    params = {
+        "key": STEAM_WEB_API_KEY,
+        "steamid": steam_id,
+        "format": "json"
+    }
+    if count:
+        params["count"] = count
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", {}).get("games", [])
+    except Exception as e:
+        print(f"Error fetching recently played games: {e}")
+        return []
+
+def get_player_achievements(steam_id, appid, language="english"):
+    """
+    Returns a list of achievements a user has unlocked for a specific app.
+    """
+    if not STEAM_WEB_API_KEY:
+        return None
+    url = "https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/"
+    params = {
+        "key": STEAM_WEB_API_KEY,
+        "steamid": steam_id,
+        "appid": appid,
+        "l": language,
+        "format": "json"
+    }
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("playerstats", {}).get("achievements", [])
+    except Exception as e:
+        print(f"Error fetching player achievements: {e}")
+        return None
+
+def get_global_achievement_percentages(appid):
+    """
+    Returns global completion percentages for achievements in a game.
+    """
+    url = "https://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/"
+    params = {
+        "gameid": appid,
+        "format": "json"
+    }
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("achievementpercentages", {}).get("achievements", [])
+    except Exception as e:
+        print(f"Error fetching global achievements: {e}")
+        return []
+
+def get_friend_list(steam_id, relationship="friend"):
+    """
+    Returns the friend list of a Steam user.
+    """
+    if not STEAM_WEB_API_KEY:
+        return []
+    url = "https://api.steampowered.com/ISteamUser/GetFriendList/v0001/"
+    params = {
+        "key": STEAM_WEB_API_KEY,
+        "steamid": steam_id,
+        "relationship": relationship,
+        "format": "json"
+    }
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("friendslist", {}).get("friends", [])
+    except Exception as e:
+        print(f"Error fetching friend list: {e}")
+        return []
+
+def get_featured_categories(language="english"):
+    """
+    Fetches the featured categories (Specials, Top Sellers, etc.) from the Steam Store Frontpage API.
+    """
+    url = "https://store.steampowered.com/api/featuredcategories/"
+    params = {"l": language}
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error fetching featured categories: {e}")
+        return {}
+
 if __name__ == "__main__":
     # Test search
     results = search_games("Age of Empires", "US")

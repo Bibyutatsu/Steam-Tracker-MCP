@@ -7,115 +7,97 @@ sdk: docker
 pinned: false
 ---
 
-# Steam Price Tracker MCP Server
+# 🎮 Steam Intelligence MCP Server
 
-A powerful Model Context Protocol (MCP) server that transforms Steam into a personalized intelligence tool for price tracking and wishlist monitoring.
-
-## 🚀 Features
-
-### Core Capabilities
-- **Smart Search**: Find any game on the Steam Store with real-time pricing and discount data.
-- **Auto-Location**: Automatically detects your country to show prices in your local currency (e.g., ₹ INR, $ USD).
-
-### Personalized Intelligence (New!)
-- **Official Wishlist Tracking**: Monitors your Steam wishlist using the official `IWishlistService` Web API.
-- **Deal Detection**: Highlights the best discounts and historical lows for games you actually want.
-- **Player Intel**: Snapshot of your profile status, current activity, and persona details.
-
-### Remote Access
-- **Dual Transport Support**: Run via standard **stdio** (local) or **SSE** (remote/cloud).
-- **Hugging Face Ready**: Fully optimized for hosting on Hugging Face Spaces for access from any MCP client (like Claude).
+A state-of-the-art Model Context Protocol (MCP) server that transforms Steam into a high-octane intelligence tool. From real-time price tracking and wishlist audits to social monitoring and achievement analytics—give your AI the ultimate gaming edge.
 
 ---
 
-## 🛠️ Setup
+## 🚀 Key Features
 
-### 1. Prerequisites
-- Python 3.10+
-- A Steam Web API Key ([Get it here](https://steamcommunity.com/dev/apikey))
-- Your 64-bit Steam ID (e.g., `7656119...`)
+### 💎 Performance & Intelligence
+- **Market Sentinel**: Real-time localized pricing (₹, $, €, etc.) using automatic region detection.
+- **Library Architect**: Deep-dive analysis of your owned games, calculating total playtime and backlog trends.
+- **Social Pulse**: Live monitoring of friend activity and persona status.
+- **Achievement Rarity**: Compare your personal 100% unlocks against global player density.
 
-### 2. Local Installation
-```bash
-git clone <repo-url>
-cd Steam-Tracker-MCP
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install -r requirements.txt
+### ☁️ Deployment Excellence
+- **Zero-Config Hosting**: Native support for Hugging Face Spaces (Docker).
+- **Dual-Mode Transport**: Seamlessly switch between **Stdio** (Local) and **SSE** (Cloud) protocols.
+- **Auto-Sync**: Built-in GitHub Actions to keep your cloud instance in-sync with your code changes.
+
+---
+
+## ⚡ Quick Start: 2-Minute Replication
+
+The easiest way to get your own instance running in the cloud:
+
+1.  **Duplicate the Space**: Click the **"Duplicate"** button on the original Hugging Face Space.
+2.  **Configure Secrets**: In your new Space, go to **Settings > Variables and secrets** and add:
+    - `STEAM_WEB_API_KEY`: Your API Key from [Steam Community](https://steamcommunity.com/dev/apikey).
+    - `STEAM_ID`: Your 64-bit Steam ID.
+    - `STEAM_COUNTRY_CODE`: (Optional) Your 2-letter country code (e.g., `US`, `IN`).
+3.  **Deploy**: Hit save. The Space will build and launch your private MCP server automatically.
+
+---
+
+## 🛠️ MCP Configuration
+
+Add this to your `claude_desktop_config.json` (or equivalent) to unlock **12+ advanced gaming tools**:
+
+```json
+{
+  "mcpServers": {
+    "steam-intelligence": {
+      "url": "https://<your-username>-<your-space-name>.hf.space/sse"
+    }
+  }
+}
 ```
 
-### 3. Configuration
-Create a `.env` file in the root directory:
-```env
-STEAM_WEB_API_KEY=your_api_key_here
-STEAM_ID=your_64_bit_steam_id
-# Optional: Force a specific region
-# STEAM_COUNTRY_CODE=IN
-```
+### 🛰️ Tools Catalog
+
+| Category | Tool | Command Your AI to... |
+| :--- | :--- | :--- |
+| **Store** | `get_game_prices` | "Compare the price of Elden Ring in India vs USA." |
+| | `get_top_specials` | "What are the biggest deals on the Steam frontpage?" |
+| **Library**| `get_my_wishlist` | "Sort my wishlist by the highest discount percentage." |
+| | `analyze_my_library`| "Analyze my library and tell me my top 5 games by playtime." |
+| **Social** | `get_friends` | "Is anyone currently playing Counter-Strike?" |
+| | `get_player_info` | "Check the status of SteamID 765611..." |
+| **Stats** | `get_achievement_stats`| "Show me my rarest achievements in Cyberpunk 2077." |
+| | `get_live_player_count`| "How many people are playing Helldivers 2 right now?" |
+| **News** | `get_game_news` | "Summarize the latest patch notes for Dota 2." |
 
 ---
 
-## 🕹️ Usage
+## 🔧 Customization & Local Development
 
-### Local Execution (Stdio)
-```bash
-python server.py
-```
+If you want to modify the logic or add your own tools:
 
-### Remote Execution (SSE)
-To run the server as an SSE endpoint for remote access:
-```bash
-python app.py
-```
-
----
-
-## 🛠️ MCP Tools
-
-| Tool | Description |
-| :--- | :--- |
-| `get_game_prices` | Search for games and retrieve localized pricing and store links. |
-| `get_my_wishlist` | Fetch your wishlist, show current prices, and sort by best discounts. |
-| `get_my_profile` | Get your current Steam status and recently played activity. |
-
----
-
-## ☁️ Hosting on Hugging Face Spaces
-
-This server is optimized for 24/7 hosting on Hugging Face Spaces using the **Docker SDK**.
-
-1. **Create Space**: Go to [huggingface.co/new-space](https://huggingface.co/new-space) and select the **Docker** SDK.
-2. **Upload Files**: Upload all project files EXCEPT `.env` and `.venv` (the `Dockerfile` and `.dockerignore` will handle the rest).
-3. **Configure Secrets**: In your Space's **Settings > Variables and secrets**, add:
-   - `STEAM_WEB_API_KEY`: Your Steam API Key.
-   - `STEAM_ID`: Your 64-bit Steam ID.
-   - `STEAM_COUNTRY_CODE`: Your 2-letter country code (optional, e.g., `IN`).
-4. **Connect Claude**: Once "Running", add your Space's SSE URL to your `claude_desktop_config.json`:
-   ```json
-   {
-     "mcpServers": {
-       "steam-tracker": {
-         "url": "https://<your-username>-<space-name>.hf.space/sse"
-       }
-     }
-   }
-   ```
-
+1.  **Fork & Clone**:
+    ```bash
+    git clone https://github.com/<your-username>/Steam-Tracker-MCP
+    cd Steam-Tracker-MCP
+    ```
+2.  **Environment Setup**:
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
+3.  **Local Testing**:
+    Create a `.env` file with your credentials and run:
+    ```bash
+    python server.py
+    ```
+4.  **Sync to Cloud**:
+    Set your GitHub Repository Secret `HF_TOKEN` (Write access), and every `git push` will automatically update your Hugging Face Space.
 
 ---
 
-## 🛰️ How it Works
-1. **Discovery**: Uses official `IWishlistService` to securely fetch your specific app inventory.
-2. **Pricing**: Dynamically queries the Steam Storefront API using your detected/configured country code.
-3. **Transport**: Leverages `FastMCP` and `Uvicorn` to provide a robust, persistent connection for LLM agents.
+> [!TIP]
+> **Privacy Note**: Most player and achievement tools require the target profile's **"Game Details"** privacy setting to be set to **"Public"**.
 
----
-
-## 🔄 CI/CD & Synchronization
-
-The GitHub repository and Hugging Face Space are kept in sync automatically.
-- **Source of Truth**: All development happens on GitHub.
-- **Automation**: A [GitHub Action](.github/workflows/sync-to-hub.yml) mirrors every push to `main` directly to Hugging Face.
-- **Setup Required**:
-  1. Add a `HF_TOKEN` (Write access) to your GitHub Repository Secrets.
-  2. The action handles the `git push` with authentication automatically.
+> [!IMPORTANT]
+> **Rate Limiting**: This server uses official APIs. For high-volume tools like `get_game_prices`, the server handles batching automatically to prevent Steam API rate-limiting blocks.
