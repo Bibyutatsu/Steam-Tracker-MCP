@@ -12,4 +12,10 @@ if __name__ == "__main__":
     print(f"Starting Steam Price Tracker MCP server (SSE) on 0.0.0.0:{port}")
     
     # Run using uvicorn, which is more robust for remote hosting
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=port, 
+        proxy_headers=True, 
+        forwarded_allow_ips="*"
+    )
