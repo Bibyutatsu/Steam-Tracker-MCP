@@ -99,3 +99,14 @@ This server is optimized for 24/7 hosting on Hugging Face Spaces using the **Doc
 1. **Discovery**: Uses official `IWishlistService` to securely fetch your specific app inventory.
 2. **Pricing**: Dynamically queries the Steam Storefront API using your detected/configured country code.
 3. **Transport**: Leverages `FastMCP` and `Uvicorn` to provide a robust, persistent connection for LLM agents.
+
+---
+
+## 🔄 CI/CD & Synchronization
+
+The GitHub repository and Hugging Face Space are kept in sync automatically.
+- **Source of Truth**: All development happens on GitHub.
+- **Automation**: A [GitHub Action](.github/workflows/sync-to-hub.yml) mirrors every push to `main` directly to Hugging Face.
+- **Setup Required**:
+  1. Add a `HF_TOKEN` (Write access) to your GitHub Repository Secrets.
+  2. The action handles the `git push` with authentication automatically.
