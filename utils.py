@@ -5,7 +5,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-CACHE_FILE = ".location_cache"
+# Persistence Path Management
+MOUNT_PATH = os.getenv("MOUNT_PATH", ".")
+CACHE_FILE = os.path.join(MOUNT_PATH, ".location_cache")
+
+# Ensure the mount path exists if it's specified
+if MOUNT_PATH != "." and not os.path.exists(MOUNT_PATH):
+    try:
+        os.makedirs(MOUNT_PATH, exist_ok=True)
+    except Exception as e:
+        print(f"Warning: Could not create MOUNT_PATH {MOUNT_PATH}: {e}")
+
 
 def get_country_code():
     """
