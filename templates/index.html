@@ -39,6 +39,15 @@
             <section id="introduction">
                 <h1>Connecting to Steam Intelligence</h1>
                 <p class="subtitle">A step-by-step guide to integrate your specialized Steam MCP server into modern AI environments.</p>
+                
+                <div class="auth-note">
+                    <div class="auth-note-icon">!</div>
+                    <div class="auth-note-content">
+                        <h3>Authentication Required</h3>
+                        <p>This server is protected for your security. You must append your <span class="token-highlight">MCP_TOKEN</span> (configured in your Space Secrets) to your connection URLs using the <span class="token-highlight">?token=</span> parameter.</p>
+                    </div>
+                </div>
+
                 <p>Steam Intelligence is a Model Context Protocol (MCP) server that provides real-time access to Steam library data, pricing, and social activity. Choose your platform below to begin setup.</p>
             </section>
 
@@ -50,7 +59,7 @@
 {
   "mcpServers": {
     "steam-intelligence": {
-      "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/sse"
+      "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/sse?token=YOUR_TOKEN"
     }
   }
 }</pre>
@@ -64,7 +73,7 @@
                 <h2>Cursor / Windsurf</h2>
                 <p>For IDEs that support direct URL connection strings, use the optimized integration path:</p>
                 <div class="code-container">
-                    <pre>https://bibyutatsu-steam-tracker-mcp.hf.space/mcp</pre>
+                    <pre id="mcp-url">https://bibyutatsu-steam-tracker-mcp.hf.space/mcp?token=YOUR_TOKEN</pre>
                 </div>
                 <div class="btn-group">
                     <button class="btn" onclick="copyUrl()">Copy Integration URL</button>
@@ -82,8 +91,9 @@
 
     <script>
         function copyUrl() {
-            navigator.clipboard.writeText('https://bibyutatsu-steam-tracker-mcp.hf.space/mcp');
-            alert('Copied to clipboard!');
+            const url = document.getElementById('mcp-url').innerText;
+            navigator.clipboard.writeText(url);
+            alert('Copied to clipboard!\nRemember to replace YOUR_TOKEN with your secret.');
         }
         function openConfig() {
             alert('To find your config, navigate to: \n\nmacOS: ~/Library/Application Support/Claude/claude_desktop_config.json\nWindows: %APPDATA%/Claude/claude_desktop_config.json');
