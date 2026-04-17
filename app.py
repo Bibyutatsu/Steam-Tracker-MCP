@@ -2,8 +2,8 @@ import os
 import uvicorn
 from server import mcp
 
-# Create the SSE application from the FastMCP instance
-app = mcp.sse_app()
+# Create the StreamableHTTP application from the FastMCP instance
+app = mcp.streamable_http_app()
 
 if __name__ == "__main__":
     # Hugging Face Spaces provides the port via the PORT environment variable

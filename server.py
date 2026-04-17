@@ -10,7 +10,7 @@ load_dotenv()
 STEAM_ID = os.getenv("STEAM_ID")
 
 # Initialize FastMCP server
-mcp = FastMCP("Steam Price Tracker")
+mcp = FastMCP("Steam Price Tracker", host="0.0.0.0")
 
 # Detect location on startup
 COUNTRY_CODE = get_country_code()
