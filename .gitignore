@@ -2,6 +2,6 @@ __pycache__/
 .env
 .venv/
 .location_cache
-.price_cache.json
+*.json
 *.png
 .DS_Store

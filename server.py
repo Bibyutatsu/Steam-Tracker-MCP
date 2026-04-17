@@ -8,7 +8,7 @@ from steam_api import (
     get_current_players, get_owned_games, get_app_news, resolve_vanity_url,
     get_recently_played_games, get_player_achievements,
     get_global_achievement_percentages, get_friend_list, get_featured_categories,
-    get_library_audit
+    get_library_audit, itad_client
 )
 from utils import get_country_code
 
@@ -234,206 +234,100 @@ async def audit_library() -> str:
         
     return "\n".join(response)
 
-    if not appids_to_fetch:
-        return "Could not resolve any of the provided queries."
 
-    # 2. Fetch prices in batch using unified resolver
-    prices_data = await resolve_app_details_batch(appids_to_fetch, country_code=COUNTRY_CODE)
+# --- CATEGORY 4: PRICE INTELLIGENCE (ITAD) ---
+
+@mcp.tool()
+async def get_price_history(appid: int, country: str = None) -> str:
+    """
+    Get the historical price timeline for a Steam game.
+    Excellent for charting how prices have changed over the last 12 months.
+    """
+    target_country = country or COUNTRY_CODE
+    history = await itad_client.get_history(appid, country=target_country)
+    if not history:
+        return f"No price history found for AppID {appid} in region {target_country}."
     
-    response = [f"### 🏷️ Bulk Price Results ({COUNTRY_CODE}):\n"]
+    response = [f"### 📈 Price History for AppID `{appid}` ({target_country}):\n"]
+    response.append("| Date | Store | Price | Original | Cut |")
+    response.append("| :--- | :---- | :---- | :------- | :-- |")
     
-    for appid_str, result in prices_data.items():
-        name = names_map.get(appid_str, f"AppID {appid_str}")
-        if not result.get("success"):
-            response.append(f"- **{name}**: Data not available.")
-            continue
-            
-        data = result.get("data", {})
-        price_overview = data.get("price_overview", {})
+    # Show last 20 events to keep it readable
+    for entry in reversed(history[-20:]):
+        ts = entry["timestamp"][:10]
+        shop = entry["shop"]["name"]
+        deal = entry["deal"]
+        price = f"{deal['price']['amount']:.2f} {deal['price']['currency']}"
+        reg = f"{deal['regular']['amount']:.2f} {deal['regular']['currency']}"
+        cut = f"{deal['cut']}%"
+        response.append(f"| {ts} | {shop} | {price} | {reg} | {cut} |")
+    
+    return "\n".join(response)
+
+@mcp.tool()
+async def get_historical_stats(appid: int, country: str = None) -> str:
+    """
+    Get summary price statistics for a game, including all-time low and current best deal.
+    Useful for 'buy-trigger' decisions.
+    """
+    target_country = country or COUNTRY_CODE
+    overview = await itad_client.get_overview(appid, country=target_country)
+    if not overview:
+        return f"Could not retrieve price overview for AppID {appid}."
+    
+    prices = overview.get("prices", [])
+    if not prices:
+        return "No price data available for this game."
         
-        formatted = format_price(price_overview)
-        discount = price_overview.get("discount_percent", 0)
-        status = f"**{formatted}**"
-        if discount > 0:
-            status += f" (-{discount}%)"
-            
-        response.append(f"- **{name}** ([Store](https://store.steampowered.com/app/{appid_str})): {status}")
+    main_data = prices[0]
+    curr = main_data.get("current", {})
+    low = main_data.get("lowest", {})
+    
+    response = [f"### 💎 Price Intelligence for AppID `{appid}`\n"]
+    
+    if low:
+        low_price = f"{low['price']['amount']:.2f} {low['price']['currency']}"
+        low_ts = low.get("timestamp", "").split("T")[0]
+        response.append(f"#### 🏆 All-Time Low")
+        response.append(f"- **Price**: {low_price}")
+        response.append(f"- **Store**: {low['shop']['name']}")
+        response.append(f"- **Date**: {low_ts}")
+        response.append(f"- **Discount**: -{low.get('cut', 0)}%\n")
+        
+    if curr:
+        curr_price = f"{curr['price']['amount']:.2f} {curr['price']['currency']}"
+        response.append(f"#### 🏷️ Current Best Deal")
+        response.append(f"- **Price**: {curr_price}")
+        response.append(f"- **Store**: {curr['shop']['name']}")
+        response.append(f"- **Link**: [Go to Deal]({curr['url']})")
         
     return "\n".join(response)
 
 @mcp.tool()
-async def get_my_profile() -> str:
+async def get_global_deals(appid: int, country: str = None) -> str:
     """
-    Get your own basic Steam profile status and recently played information.
+    Compare current prices across all major stores (Steam, Epic, GOG, Humble, Fanatical, etc.)
     """
-    if not STEAM_ID:
-        return "STEAM_ID not configured in .env."
-        
-    return await get_player_info(STEAM_ID)
-
-@mcp.tool()
-async def get_live_player_count(appid: int) -> str:
-    """
-    Get the number of players currently playing a game on Steam.
-    """
-    count = await get_current_players(appid)
-    if count is None:
-        return f"Could not retrieve player count for AppID {appid}."
-    return f"There are currently **{count:,}** players in-game for AppID `{appid}`."
-
-@mcp.tool()
-async def get_game_news(appid: int, count: int = 3) -> str:
-    """
-    Get the latest news and patch notes for a specific Steam game.
-    """
-    news_items = await get_app_news(appid, count)
-    if not news_items:
-        return f"No news found for AppID {appid}."
+    target_country = country or COUNTRY_CODE
+    overview = await itad_client.get_overview(appid, country=target_country)
+    if not overview or not overview.get("prices"):
+        return f"No store data found for AppID {appid}."
     
-    response = [f"### Latest News for AppID {appid}:\n"]
-    for item in news_items:
-        title = item.get("title", "No Title")
-        url = item.get("url", "#")
-        author = item.get("author", "Unknown")
-        content = item.get("contents", "")[:500] + "..."
-        response.append(f"#### [{title}]({url})")
-        response.append(f"By: {author}")
-        response.append(f"{content}\n")
+    response = [f"### 🌏 Global Price Comparison ({target_country})\n"]
+    response.append("| Store | Current Price | Original | Discount | Link |")
+    response.append("| :---- | :------------ | :------- | :------- | :--- |")
     
-    return "\n".join(response)
-
-# --- CATEGORY 3: EXTERNAL PROFILE UTILITIES ---
-
-@mcp.tool()
-async def resolve_steam_user(vanity_name: str) -> str:
-    """
-    Resolve a Steam vanity URL name (e.g. 'gabelogannewell') to a 64-bit SteamID.
-    """
-    steamid = await resolve_vanity_url(vanity_name)
-    if not steamid:
-        return f"Could not resolve vanity name '{vanity_name}' to a SteamID."
-    return f"The SteamID for '{vanity_name}' is: `{steamid}`"
-
-@mcp.tool()
-async def get_player_info(steam_id: str) -> str:
-    """
-    Get generic profile information for any public SteamID.
-    """
-    players = await get_player_summaries(steam_id)
-    if not players:
-        return f"Could not retrieve profile info for SteamID {steam_id}."
+    for shop_deal in overview["prices"]:
+        curr = shop_deal.get("current")
+        if not curr: continue
         
-    p = players[0]
-    persona = p.get("personaname")
-    status_code = p.get("personastate", 0)
-    status_map = {0: "Offline", 1: "Online", 2: "Busy", 3: "Away", 4: "Snooze", 5: "Looking to Trade", 6: "Looking to Play"}
-    status = status_map.get(status_code, "Unknown")
-    
-    game_info = ""
-    if p.get("gameextrainfo"):
-        game_info = f"\nCurrently playing: **{p.get('gameextrainfo')}**"
+        shop_name = curr["shop"]["name"]
+        price = f"{curr['price']['amount']:.2f} {curr['price']['currency']}"
+        reg = f"{curr['regular']['amount']:.2f} {curr['regular']['currency']}"
+        cut = f"-{curr['cut']}%"
+        url = f"[Link]({curr['url']})"
         
-    return f"### Steam Profile: {persona}\n- SteamID: `{steam_id}`\n- Status: **{status}**{game_info}\n- Profile Link: {p.get('profileurl')}"
-
-@mcp.tool()
-async def get_recent_activity(steam_id: str = None) -> str:
-    """
-    Get games played in the last 2 weeks for a SteamID (defaults to yours).
-    """
-    target_id = steam_id or STEAM_ID
-    if not target_id:
-        return "No SteamID provided and STEAM_ID not configured."
-        
-    games = await get_recently_played_games(target_id)
-    if not games:
-        return f"No recent activity found for SteamID {target_id} (or profile is private)."
-        
-    response = [f"### Recent Activity (Last 2 Weeks) for `{target_id}`:\n"]
-    for g in games:
-        hours = round(g.get("playtime_2weeks", 0) / 60, 1)
-        total = round(g.get("playtime_forever", 0) / 60, 1)
-        response.append(f"- **{g.get('name')}**: {hours} hrs recently ({total} hrs total)")
-        
-    return "\n".join(response)
-
-@mcp.tool()
-async def get_friends(steam_id: str = None) -> str:
-    """
-    Get the friend list for a SteamID (defaults to yours).
-    """
-    target_id = steam_id or STEAM_ID
-    if not target_id:
-        return "No SteamID provided and STEAM_ID not configured."
-        
-    friends = await get_friend_list(target_id)
-    if not friends:
-        return f"Could not retrieve friends for `{target_id}` (profile/friend list is private)."
-        
-    friend_ids = ",".join([f["steamid"] for f in friends[:50]]) 
-    summaries = await get_player_summaries(friend_ids)
-    
-    response = [f"### Friend List for `{target_id}` ({len(friends)} friends):\n"]
-    for p in summaries:
-        status_code = p.get("personastate", 0)
-        status_map = {0: "Offline", 1: "Online", 2: "Busy", 3: "Away", 4: "Snooze", 5: "Looking to Trade", 6: "Looking to Play"}
-        status = status_map.get(status_code, "Unknown")
-        game = f" (Playing: {p.get('gameextrainfo')})" if p.get("gameextrainfo") else ""
-        response.append(f"- **{p.get('personaname')}**: {status}{game}")
-        
-    return "\n".join(response)
-
-@mcp.tool()
-async def get_achievement_stats(appid: int, steam_id: str = None) -> str:
-    """
-    Compare your achievements with global rarity for a specific game.
-    """
-    target_id = steam_id or STEAM_ID
-    if not target_id:
-        return "No SteamID provided and STEAM_ID not configured."
-        
-    player_ach = await get_player_achievements(target_id, appid)
-    if player_ach is None:
-        return f"Could not retrieve achievements for AppID {appid} (profile/game data private)."
-        
-    global_ach = await get_global_achievement_percentages(appid)
-    global_map = {a["name"]: a["percent"] for a in global_ach}
-    
-    response = [f"### Achievement Stats for AppID `{appid}`:\n"]
-    unlocked = [a for a in player_ach if a.get("achieved") == 1]
-    response.append(f"You have unlocked **{len(unlocked)}/{len(player_ach)}** achievements.\n")
-    
-    response.append("#### Rare Achievements You've Earned:")
-    earned_with_rarity = []
-    for a in unlocked:
-        rarity = global_map.get(a["apiname"], 100)
-        earned_with_rarity.append((a.get("name") or a["apiname"], rarity))
-    
-    earned_with_rarity.sort(key=lambda x: x[1])
-    for name, rarity in earned_with_rarity[:5]:
-        response.append(f"- **{name}**: {rarity:.1f}% of players have this")
-        
-    return "\n".join(response)
-
-@mcp.tool()
-async def get_top_specials() -> str:
-    """
-    Get the top featured "Specials" (deals) from the Steam homepage.
-    """
-    featured = await get_featured_categories()
-    specials = featured.get("specials", {}).get("items", [])
-    
-    if not specials:
-        return "Could not find any featured specials right now."
-        
-    response = ["### Current Featured Specials on Steam:\n"]
-    for item in specials:
-        name = item.get("name")
-        discount = item.get("discount_percent")
-        final = item.get("final_price", 0) / 100
-        original = item.get("original_price", 0) / 100
-        currency = item.get("currency", "")
-        
-        response.append(f"- **{name}**: {final:.2f} {currency} (-{discount}%) [~~{original:.2f}~~]")
+        response.append(f"| {shop_name} | **{price}** | {reg} | {cut} | {url} |")
         
     return "\n".join(response)
 

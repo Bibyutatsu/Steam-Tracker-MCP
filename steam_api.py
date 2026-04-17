@@ -8,13 +8,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 STEAM_WEB_API_KEY = os.getenv("STEAM_WEB_API_KEY")
+ITAD_API_KEY = os.getenv("ITAD_API_KEY")
 MOUNT_PATH = os.getenv("MOUNT_PATH", ".")
+if MOUNT_PATH != "." and not os.path.exists(MOUNT_PATH):
+    try:
+        os.makedirs(MOUNT_PATH, exist_ok=True)
+    except Exception as e:
+        print(f"Warning: Could not create MOUNT_PATH {MOUNT_PATH}: {e}")
 
 def sanitize_url(url: str) -> str:
     """Removes sensitive keys from URLs for safe logging."""
     if not url: return url
     if STEAM_WEB_API_KEY and STEAM_WEB_API_KEY in url:
-        return url.replace(STEAM_WEB_API_KEY, "[REDACTED_API_KEY]")
+        return url.replace(STEAM_WEB_API_KEY, "[REDACTED_STEAM_KEY]")
+    if ITAD_API_KEY and ITAD_API_KEY in url:
+        return url.replace(ITAD_API_KEY, "[REDACTED_ITAD_KEY]")
     return url
 
 async def safe_get(client, url, params=None, timeout=10.0):
@@ -669,6 +677,7 @@ async def get_featured_categories(language="english"):
     """
     url = "https://store.steampowered.com/api/featuredcategories/"
     params = {"l": language}
+
     try:
         async with httpx.AsyncClient() as client:
             response = await safe_get(client, url, params=params)
@@ -676,3 +685,105 @@ async def get_featured_categories(language="english"):
             return response.json()
     except Exception:
         return {}
+
+class ITADClient:
+    """
+    Client for the IsThereAnyDeal (ITAD) API.
+    Handles ID lookup, price history, and historical lows.
+    """
+    BASE_URL = "https://api.isthereanydeal.com"
+
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.map_file = os.path.join(MOUNT_PATH, ".itad_map.json")
+        self.mapping = self._load_mapping()
+
+    def _load_mapping(self):
+        if os.path.exists(self.map_file):
+            try:
+                with open(self.map_file, "r") as f:
+                    return json.load(f)
+            except: return {}
+        return {}
+
+    def _save_mapping(self):
+        try:
+            with open(self.map_file, "w") as f:
+                json.dump(self.mapping, f)
+        except: pass
+
+    async def get_id(self, appid):
+        """Maps Steam AppID to ITAD UUID."""
+        appid_str = str(appid)
+        if appid_str in self.mapping:
+            return self.mapping[appid_str]
+
+        if not self.api_key: return None
+
+        url = f"{self.BASE_URL}/games/lookup/v1"
+        params = {"appid": appid, "key": self.api_key}
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await safe_get(client, url, params=params)
+                if response:
+                    data = response.json()
+                    if data.get("found"):
+                        itad_id = data["game"]["id"]
+                        self.mapping[appid_str] = itad_id
+                        self._save_mapping()
+                        return itad_id
+        except: pass
+        return None
+
+    async def get_history(self, appid, country="US"):
+        """Fetches price history timeline for a game."""
+        itad_id = await self.get_id(appid)
+        if not itad_id or not self.api_key: return []
+
+        url = f"{self.BASE_URL}/games/history/v2"
+        # ITAD expects ISO format for 'since' without microseconds
+        import datetime
+        since_iso = (datetime.datetime.now() - datetime.timedelta(days=365)).replace(microsecond=0).isoformat() + "Z"
+
+        params = {
+            "id": itad_id,
+            "country": country,
+            "key": self.api_key,
+            "since": since_iso
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await safe_get(client, url, params=params)
+                if response:
+                    return response.json()
+        except: pass
+        return []
+
+    async def get_overview(self, appid, country="US"):
+        """Fetches current prices and historical low summary using POST /overview/v2."""
+        itad_id = await self.get_id(appid)
+        if not itad_id or not self.api_key: return None
+
+        url = f"{self.BASE_URL}/games/overview/v2"
+        params = {"country": country, "key": self.api_key}
+        # Based on docs, overview/v2 often requires POST with gids array
+        payload = [itad_id] # Try as simple array of IDs
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                # Some docs say POST with {"gids": [...]}, others just [...] 
+                # Let's try JSON array first as that's common for v2
+                response = await client.post(url, params=params, json=payload, timeout=10.0)
+                if response.status_code == 405:
+                    # Fallback to GET if POST is not the one
+                    response = await client.get(url, params={"id": itad_id, "country": country, "key": self.api_key})
+                
+                if response.status_code == 200:
+                    return response.json()
+        except Exception as e:
+            print(f"ITAD Overview Error: {e}")
+        return None
+
+itad_client = ITADClient(ITAD_API_KEY)
