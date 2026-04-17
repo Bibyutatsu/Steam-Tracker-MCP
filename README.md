@@ -1,51 +1,87 @@
 # Steam Price Tracker MCP Server
 
-A Model Context Protocol (MCP) server that allows you to search for Steam games and get their current prices, discounts, and store links in your local currency.
+A powerful Model Context Protocol (MCP) server that transforms Steam into a personalized intelligence tool for price tracking and wishlist monitoring.
 
-## Features
-- **Smart Search**: Find matching game titles easily.
-- **Auto-Location**: Automatically detects your country to show prices in your local currency.
-- **Price Details**: Shows current price, original price, and discount percentage.
+## 🚀 Features
 
-## Setup
+### Core Capabilities
+- **Smart Search**: Find any game on the Steam Store with real-time pricing and discount data.
+- **Auto-Location**: Automatically detects your country to show prices in your local currency (e.g., ₹ INR, $ USD).
 
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Personalized Intelligence (New!)
+- **Official Wishlist Tracking**: Monitors your Steam wishlist using the official `IWishlistService` Web API.
+- **Deal Detection**: Highlights the best discounts and historical lows for games you actually want.
+- **Player Intel**: Snapshot of your profile status, current activity, and persona details.
 
-2. **Configure Environment**:
-   Create a `.env` file with your Steam Web API Key:
-   ```env
-   STEAM_WEB_API_KEY=your_api_key_here
-   # Optional: Override country code (e.g., US, IN, GB)
-   # STEAM_COUNTRY_CODE=US
-   ```
+### Remote Access
+- **Dual Transport Support**: Run via standard **stdio** (local) or **SSE** (remote/cloud).
+- **Hugging Face Ready**: Fully optimized for hosting on Hugging Face Spaces for access from any MCP client (like Claude).
 
-3. **Run the Server**:
-   ```bash
-   python server.py
-   ```
+---
 
-## Usage as MCP Tool
+## 🛠️ Setup
 
-The server exposes one primary tool: `get_game_prices`.
+### 1. Prerequisites
+- Python 3.10+
+- A Steam Web API Key ([Get it here](https://steamcommunity.com/dev/apikey))
+- Your 64-bit Steam ID (e.g., `7656119...`)
 
-### `get_game_prices(query: str)`
-Search for Steam games by name.
-
-**Example Tool Call:**
-```json
-{
-  "name": "get_game_prices",
-  "arguments": {
-    "query": "Age of Empires"
-  }
-}
+### 2. Local Installation
+```bash
+git clone <repo-url>
+cd Steam-Tracker-MCP
+python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+pip install -r requirements.txt
 ```
 
-## How Location Detection Works
-The server uses:
-1. `ipify` to get your public IP.
-2. `ip-api` to resolve the IP to a country code.
-3. The country code is passed to the Steam Store API to return localized pricing and currency.
+### 3. Configuration
+Create a `.env` file in the root directory:
+```env
+STEAM_WEB_API_KEY=your_api_key_here
+STEAM_ID=your_64_bit_steam_id
+# Optional: Force a specific region
+# STEAM_COUNTRY_CODE=IN
+```
+
+---
+
+## 🕹️ Usage
+
+### Local Execution (Stdio)
+```bash
+python server.py
+```
+
+### Remote Execution (SSE)
+To run the server as an SSE endpoint for remote access:
+```bash
+python app.py
+```
+
+---
+
+## 🛠️ MCP Tools
+
+| Tool | Description |
+| :--- | :--- |
+| `get_game_prices` | Search for games and retrieve localized pricing and store links. |
+| `get_my_wishlist` | Fetch your wishlist, show current prices, and sort by best discounts. |
+| `get_my_profile` | Get your current Steam status and recently played activity. |
+
+---
+
+## ☁️ Hosting on Hugging Face Spaces
+
+This server is designed to be hosted 24/7 on Hugging Face Spaces.
+1. Create a new **Python/Docker Space**.
+2. Upload the project files.
+3. Configure your `STEAM_WEB_API_KEY`, `STEAM_ID`, and `STEAM_COUNTRY_CODE` as **Secrets**.
+4. Connect Claude Desktop using your Space's SSE URL: `https://<user>-<space>.hf.space/sse`.
+
+---
+
+## 🛰️ How it Works
+1. **Discovery**: Uses official `IWishlistService` to securely fetch your specific app inventory.
+2. **Pricing**: Dynamically queries the Steam Storefront API using your detected/configured country code.
+3. **Transport**: Leverages `FastMCP` and `Uvicorn` to provide a robust, persistent connection for LLM agents.
