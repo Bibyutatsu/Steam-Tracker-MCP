@@ -28,6 +28,7 @@ def get_country_code():
     # 1. Check for override in .env
     env_cc = os.getenv("STEAM_COUNTRY_CODE")
     if env_cc:
+        print(f"Location: Using STEAM_COUNTRY_CODE override from environment: {env_cc.upper()}")
         return env_cc.upper()
 
     # 2. Check for cache file
@@ -37,26 +38,45 @@ def get_country_code():
                 data = json.load(f)
                 cached_cc = data.get("country_code")
                 if cached_cc:
+                    print(f"Location: Loaded cached region: {cached_cc.upper()}")
                     return cached_cc.upper()
         except (json.JSONDecodeError, IOError):
             pass 
 
     # 3. Live detection
+    print("Location: Detecting region via GeoIP...")
     try:
         with httpx.Client(timeout=10.0) as client:
-            # Get public IP using ipify
+            # Get public IP using ipify (HTTPS)
             ip_resp = client.get("https://api.ipify.org?format=json")
             ip_resp.raise_for_status()
             public_ip = ip_resp.json().get("ip")
 
             if public_ip:
-                # Get country code using ip-api
-                geo_resp = client.get(f"http://ip-api.com/json/{public_ip}")
-                geo_resp.raise_for_status()
-                country_code = geo_resp.json().get("countryCode")
+                country_code = None
                 
-                if country_code:
+                # Primary: ipapi.co (HTTPS)
+                try:
+                    geo_resp = client.get(f"https://ipapi.co/{public_ip}/json/")
+                    if geo_resp.status_code == 200:
+                        country_code = geo_resp.json().get("country_code")
+                except Exception:
+                    pass
+                
+                # Fallback: freeipapi.com (HTTPS)
+                if not country_code:
+                    try:
+                        print("Location: Primary GeoIP rate-limited or failed. Trying fallback...")
+                        geo_resp = client.get(f"https://freeipapi.com/api/json/{public_ip}")
+                        if geo_resp.status_code == 200:
+                            # freeipapi uses countryCode (2 letters)
+                            country_code = geo_resp.json().get("countryCode")
+                    except Exception:
+                        pass
+
+                if country_code and len(country_code) == 2:
                     country_code = country_code.upper()
+                    print(f"Location: Detected region {country_code} for IP {public_ip[:7]}...")
                     # Save to cache
                     try:
                         with open(CACHE_FILE, "w") as f:
@@ -64,8 +84,11 @@ def get_country_code():
                     except IOError:
                         pass
                     return country_code
+                else:
+                    print("Location: All GeoIP services failed to detect region.")
     except Exception as e:
-        print(f"Error detecting location: {e}")
+        # Log minimal error to avoid IP/service leakage
+        print(f"Location Error: Detection failed ({str(e)[:50]})")
     
     # Default to US if detection fails
     return "US"

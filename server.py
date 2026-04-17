@@ -21,6 +21,7 @@ mcp = FastMCP("Steam Price Tracker", host="0.0.0.0")
 
 # Detect location on startup
 COUNTRY_CODE = get_country_code()
+print(f"### Steam Intelligence initialized in Region: {COUNTRY_CODE}")
 
 @mcp.tool()
 async def get_game_prices(query: str) -> str:

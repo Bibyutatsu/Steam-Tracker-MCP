@@ -101,10 +101,19 @@ app.add_route("/sse", mcp_alias)
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 7860))
     if not MCP_TOKEN:
-        logger.warning("MCP_TOKEN not set. Server is in PUBLIC mode.")
+        logger.critical("SECURITY ALERT: MCP_TOKEN not set! Server will NOT start in insecure public mode.")
+        print("\n" + "!"*60)
+        print("  CRITICAL SECURITY ERROR: MCP_TOKEN environment variable is missing.")
+        print("  Please set MCP_TOKEN to a secure random string for authentication.")
+        print("!"*60 + "\n")
+        import sys
+        sys.exit(1)
     else:
         logger.info("MCP_TOKEN configured. Strict Header Authentication is ACTIVE.")
         
     logger.info(f"Starting Steam Intelligence MCP server on 0.0.0.0:{port}")
-    # Disable default access_log to prevent token leaks from URL fallbacks
-    uvicorn.run(app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*", access_log=False)
+    # Disable default access_log to prevent token leaks from URL fallbacks.
+    # Restrict forwarded_allow_ips to 127.0.0.1 by default for safety, 
+    # but allow it to be configured via env if needed.
+    allowed_ips = os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1")
+    uvicorn.run(app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips=allowed_ips, access_log=False)
