@@ -17,6 +17,7 @@
         <div class="nav-section-label">Get Started</div>
         <ul class="nav-items">
             <li class="nav-item"><a href="#introduction">Introduction</a></li>
+            <li class="nav-item"><a href="#setup">Host Your Own</a></li>
             <li class="nav-item active"><a href="#claude">Claude Desktop</a></li>
             <li class="nav-item"><a href="#cursor">Cursor / Windsurf</a></li>
             <li class="nav-item"><a href="#perplexity">Perplexity</a></li>
@@ -49,6 +50,22 @@
                 </div>
 
                 <p>Steam Intelligence is a Model Context Protocol (MCP) server that provides real-time access to Steam library data, pricing, and social activity. Choose your platform below to begin setup.</p>
+            </section>
+
+            <section id="setup">
+                <h2>🚀 Host Your Own Instance</h2>
+                <p>The easiest way to use this MCP server is to host your own private instance on Hugging Face Spaces:</p>
+                <ol style="margin-left: 1.5rem; margin-bottom: 1.5rem;">
+                    <li><strong>Duplicate the Space:</strong> Click the <strong>"Duplicate Space"</strong> button in the Hugging Face menu (top right).</li>
+                    <li><strong>Configure Secrets:</strong> Go to your new Space's <strong>Settings > Variables and secrets</strong> and add:
+                        <ul style="margin-left: 1.5rem; margin-top: 0.5rem; color: var(--text-dim); font-size: 0.9rem;">
+                            <li><code>STEAM_WEB_API_KEY</code>: Your key from <a href="https://steamcommunity.com/dev/apikey" target="_blank">Steam Dev Portal</a>.</li>
+                            <li><code>STEAM_ID</code>: Your 64-bit Steam ID.</li>
+                            <li><code>MCP_TOKEN</code>: Your secret token (e.g., the one you use in <code>?token=...</code>).</li>
+                        </ul>
+                    </li>
+                    <li><strong>Deploy:</strong> Hit Save. Your private MCP server will be live in seconds.</li>
+                </ol>
             </section>
 
             <section id="claude">

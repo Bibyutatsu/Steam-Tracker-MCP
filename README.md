@@ -134,4 +134,7 @@ If you want to modify the logic or add your own tools:
 > **Privacy Note**: Most player and achievement tools require the target profile's **"Game Details"** privacy setting to be set to **"Public"**.
 
 > [!IMPORTANT]
+> **Ultimate Privacy**: By **Duplicating the Space** and providing your own `MCP_TOKEN` and `STEAM_ID` secrets, you ensure your intelligence data remains private and your API quota is reserved exclusively for your use.
+
+> [!WARNING]
 > **Rate Limiting**: This server uses official APIs. For high-volume tools like `get_game_prices`, the server handles batching automatically to prevent Steam API rate-limiting blocks.
