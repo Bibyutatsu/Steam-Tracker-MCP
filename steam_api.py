@@ -1,10 +1,50 @@
 import requests
 import os
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
 STEAM_WEB_API_KEY = os.getenv("STEAM_WEB_API_KEY")
+
+async def get_and_cache_profile_image(steam_id, cache_filename="profile_avatar.png"):
+    """
+    Fetches the Steam profile image and caches it locally.
+    Returns the absolute cache path on success, None on failure.
+    Uses MOUNT_PATH from environment if available.
+    """
+    if not STEAM_WEB_API_KEY or not steam_id:
+        return None
+    
+    mount_path = os.getenv("MOUNT_PATH", ".")
+    cache_path = os.path.join(mount_path, cache_filename)
+    
+    # Ensure directory exists
+    if mount_path != "." and not os.path.exists(mount_path):
+        os.makedirs(mount_path, exist_ok=True)
+
+    # Check if cache exists
+    if os.path.exists(cache_path):
+        return cache_path
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Get Player Summaries
+            url = f"https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={STEAM_WEB_API_KEY}&steamids={steam_id}"
+            response = await client.get(url)
+            data = response.json()
+            
+            players = data.get("response", {}).get("players", [])
+            if players:
+                avatar_url = players[0].get("avatarfull")
+                if avatar_url:
+                    img_data = await client.get(avatar_url)
+                    with open(cache_path, "wb") as f:
+                        f.write(img_data.content)
+                    return cache_path
+    except Exception as e:
+        print(f"Error fetching profile image: {e}")
+    return None
 
 def search_games(term, country_code="US", language="english"):
     """

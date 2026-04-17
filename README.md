@@ -9,22 +9,10 @@ pinned: false
 
 # 🎮 Steam Intelligence MCP Server
 
-A state-of-the-art Model Context Protocol (MCP) server that transforms Steam into a high-octane intelligence tool. From real-time price tracking and wishlist audits to social monitoring and achievement analytics—give your AI the ultimate gaming edge.
+[![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-blue)](https://huggingface.co/spaces/Bibyutatsu/steam-tracker-mcp)
+[![Live Demo](https://img.shields.io/badge/%F0%9F%9A%80%20Live-Demo-green)](https://bibyutatsu-steam-tracker-mcp.hf.space/)
 
----
-
-## 🚀 Key Features
-
-### 💎 Performance & Intelligence
-- **Market Sentinel**: Real-time localized pricing (₹, $, €, etc.) using automatic region detection.
-- **Library Architect**: Deep-dive analysis of your owned games, calculating total playtime and backlog trends.
-- **Social Pulse**: Live monitoring of friend activity and persona status.
-- **Achievement Rarity**: Compare your personal 100% unlocks against global player density.
-
-### ☁️ Deployment Excellence
-- **Zero-Config Hosting**: Native support for Hugging Face Spaces (Docker).
-- **Dual-Mode Transport**: Seamlessly switch between **Stdio** (Local) and **SSE** (Cloud) protocols.
-- **Auto-Sync**: Built-in GitHub Actions to keep your cloud instance in-sync with your code changes.
+Model Context Protocol (MCP) server that transforms Steam into a high-octane intelligence tool. From real-time price tracking and wishlist audits to social monitoring and achievement analytics—give your AI the ultimate gaming edge.
 
 ---
 
@@ -32,7 +20,7 @@ A state-of-the-art Model Context Protocol (MCP) server that transforms Steam int
 
 The easiest way to get your own instance running in the cloud:
 
-1.  **Duplicate the Space**: Click the **"Duplicate"** button on the original Hugging Face Space.
+1.  **Duplicate the Space**: Click the **"Duplicate"** button on the [Bibyutatsu Space](https://huggingface.co/spaces/Bibyutatsu/steam-tracker-mcp).
 2.  **Configure Secrets**: In your new Space, go to **Settings > Variables and secrets** and add:
     - `STEAM_WEB_API_KEY`: Your API Key from [Steam Community](https://steamcommunity.com/dev/apikey).
     - `STEAM_ID`: Your 64-bit Steam ID.
@@ -41,15 +29,60 @@ The easiest way to get your own instance running in the cloud:
 
 ---
 
+## 📁 Project Structure
+
+```text
+├── app.py             # Entry point (Uvicorn/Starlette)
+├── server.py          # MCP Tool definitions (FastMCP)
+├── steam_api.py       # Steam Web API wrapper & Utilities
+├── utils.py           # General utility functions
+├── templates/         # UI HTML templates
+└── static/            # CSS & static assets
+```
+
+---
+
+## 🛠️ MCP Configuration
+...
+
 ## 🛠️ MCP Configuration
 
-Add this to your `claude_desktop_config.json` (or equivalent) to unlock **12+ advanced gaming tools**:
+### 1. Claude Desktop
+Add this to your `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "steam-intelligence": {
-      "url": "https://<your-username>-<your-space-name>.hf.space/sse"
+    "steam-tracker": {
+      "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp"
+    }
+  }
+}
+```
+
+### 2. Cursor / Windsurf
+Add a new MCP server in your IDE settings (JSON mode):
+
+```json
+"steam-tracker": {
+  "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp"
+}
+```
+
+### 3. Perplexity
+1. Install the [PerplexityXPC Helper](https://github.com/perplexity-ai/perplexity-mcp-helper).
+2. Go to **Account Settings > Connectors**.
+3. Add a new Connector using the URL: `https://bibyutatsu-steam-tracker-mcp.hf.space/mcp`
+
+
+### 4. Antigravity
+Add this to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "steam-tracker": {
+      "serverUrl": "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp"
     }
   }
 }

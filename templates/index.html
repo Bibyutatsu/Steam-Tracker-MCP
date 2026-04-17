@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steam Intelligence | MCP Setup Guide</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav>
+        <a href="/" class="nav-logo">
+            <img src="/profile_image.png" class="avatar" alt="User">
+            <span class="logo-text">Steam Intelligence</span>
+        </a>
+
+        <div class="nav-section-label">Get Started</div>
+        <ul class="nav-items">
+            <li class="nav-item"><a href="#introduction">Introduction</a></li>
+            <li class="nav-item active"><a href="#claude">Claude Desktop</a></li>
+            <li class="nav-item"><a href="#cursor">Cursor / Windsurf</a></li>
+            <li class="nav-item"><a href="#perplexity">Perplexity</a></li>
+        </ul>
+
+        <div class="nav-section-label">Resources</div>
+        <ul class="nav-items">
+            <li class="nav-item"><a href="https://huggingface.co/spaces/Bibyutatsu/steam-tracker-mcp" target="_blank">View on HF</a></li>
+            <li class="nav-item"><a href="https://github.com/Bibyutatsu/Steam-Tracker-MCP" target="_blank">GitHub Repo</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        <div class="content-container">
+            <div class="status-pill">
+                <span class="pulse"></span>
+                Server Operational
+            </div>
+
+            <section id="introduction">
+                <h1>Connecting to Steam Intelligence</h1>
+                <p class="subtitle">A step-by-step guide to integrate your specialized Steam MCP server into modern AI environments.</p>
+                <p>Steam Intelligence is a Model Context Protocol (MCP) server that provides real-time access to Steam library data, pricing, and social activity. Choose your platform below to begin setup.</p>
+            </section>
+
+            <section id="claude">
+                <h2>Claude Desktop</h2>
+                <p>The standard way to connect to any SSE-enabled MCP server. Add the following entry to your configuration file:</p>
+                <div class="code-container">
+                    <pre>
+{
+  "mcpServers": {
+    "steam-intelligence": {
+      "url": "https://bibyutatsu-steam-tracker-mcp.hf.space/sse"
+    }
+  }
+}</pre>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="openConfig()">Open Config Folder</button>
+                </div>
+            </section>
+
+            <section id="cursor">
+                <h2>Cursor / Windsurf</h2>
+                <p>For IDEs that support direct URL connection strings, use the optimized integration path:</p>
+                <div class="code-container">
+                    <pre>https://bibyutatsu-steam-tracker-mcp.hf.space/mcp</pre>
+                </div>
+                <div class="btn-group">
+                    <button class="btn" onclick="copyUrl()">Copy Integration URL</button>
+                </div>
+            </section>
+
+            <section id="perplexity">
+                <h2>Perplexity</h2>
+                <p>Enhance your Perplexity research sessions with live Steam data using the MCP Connector.</p>
+                <p>1. Install the <a href="https://github.com/perplexity-ai/perplexity-mcp-helper" target="_blank" style="color: var(--accent); font-weight: 500;">PerplexityXPC Helper</a>.</p>
+                <p>2. Navigate to <strong>Account Settings > Connectors</strong> and use the URL from the section above.</p>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        function copyUrl() {
+            navigator.clipboard.writeText('https://bibyutatsu-steam-tracker-mcp.hf.space/mcp');
+            alert('Copied to clipboard!');
+        }
+        function openConfig() {
+            alert('To find your config, navigate to: \n\nmacOS: ~/Library/Application Support/Claude/claude_desktop_config.json\nWindows: %APPDATA%/Claude/claude_desktop_config.json');
+        }
+    </script>
+</body>
+</html>
