@@ -186,76 +186,189 @@ async def get_app_details(appid, country_code="US", language="english"):
     except Exception:
         return None
 
-async def get_apps_details_batch(appids, country_code="US", language="english"):
+async def get_app_names_batch(appids):
     """
-    Retrieves pricing information for multiple app IDs in optimized batches of 100.
+    Fetches game names for a list of AppIDs using ICommunityService/GetApps.
+    """
+    if not appids:
+        return {}
+    
+    if not STEAM_WEB_API_KEY:
+        return {}
+        
+    url = "https://api.steampowered.com/ICommunityService/GetApps/v1/"
+    
+    # Process in chunks of 50 (safer for URL length)
+    chunk_size = 50
+    all_names = {}
+    
+    for i in range(0, len(appids), chunk_size):
+        chunk = appids[i:i + chunk_size]
+        params = {"key": STEAM_WEB_API_KEY}
+        for j, appid in enumerate(chunk):
+            params[f"appids[{j}]"] = appid
+            
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await safe_get(client, url, params=params)
+                if response:
+                    data = response.json()
+                    apps = data.get("response", {}).get("apps", [])
+                    for app in apps:
+                        all_names[str(app.get("appid"))] = app.get("name")
+        except Exception:
+            pass
+            
+    return all_names
+
+async def resolve_app_details_batch(appids, country_code="US", language="english"):
+    """
+    Unified resolver that fetches BOTH metadata and pricing for a list of AppIDs.
+    Uses ICommunityService/GetApps for names and Store API for prices.
     """
     results = {}
     remaining_appids = []
 
-    # 1. Check cache for all requested IDs
+    # 1. Check cache and identify what's truly missing
     for appid in appids:
-        cached = price_cache.get(appid, country_code)
-        if cached:
-            results[str(appid)] = {"success": True, "data": cached}
+        appid_str = str(appid)
+        cached = price_cache.get(appid_str, country_code)
+        
+        # We only count it as "cached" if it has both price and name
+        if cached and cached.get("name") and cached.get("name") != "Unknown App":
+            results[appid_str] = {"success": True, "data": cached}
         else:
-            remaining_appids.append(appid)
+            remaining_appids.append(int(appid))
 
     if not remaining_appids:
         return results
 
-    # 2. Fetch remaining IDs in chunks of 50 (Steam allows 100, but 50 is more reliable)
-    chunk_size = 50
-    chunks = [remaining_appids[i:i + chunk_size] for i in range(0, len(remaining_appids), chunk_size)]
+    # 2. Fetch missing data in parallel
+    if remaining_appids:
+        # Fetch names via Community API (High performance batch)
+        name_task = get_app_names_batch(remaining_appids)
+        
+        # Fetch prices via Store API (Chunks of 50)
+        chunk_size = 50
+        chunks = [remaining_appids[i:i + chunk_size] for i in range(0, len(remaining_appids), chunk_size)]
+        
+        async def fetch_price_chunk(chunk):
+            ids_str = ",".join(map(str, chunk))
+            url = "https://store.steampowered.com/api/appdetails"
+            params = {
+                "appids": ids_str,
+                "cc": country_code,
+                "l": language,
+                "filters": "price_overview"
+            }
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await safe_get(client, url, params=params, timeout=20.0)
+                    return response.json() if response else {}
+            except Exception: return {}
 
-    async def fetch_chunk(chunk):
-        ids_str = ",".join(map(str, chunk))
-        url = "https://store.steampowered.com/api/appdetails"
-        params = {
-            "appids": ids_str,
-            "cc": country_code,
-            "l": language,
-            "filters": "price_overview" # Mandatory for batching
-        }
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await safe_get(client, url, params=params, timeout=15.0)
-                if response and response.status_code == 200:
-                    return response.json() or {}
-                return {}
-        except Exception:
-            return {}
+        price_tasks = [fetch_price_chunk(c) for c in chunks]
+        
+        # Execute all
+        name_results = await asyncio.gather(name_task, *price_tasks)
+        name_map = name_results[0]
+        price_responses = name_results[1:]
+        
+        # 3. Merge and cache
+        updated_cache = False
+        for resp in price_responses:
+            if not resp: continue
+            for appid_str, result in resp.items():
+                if result.get("success"):
+                    data = result.get("data")
+                    if isinstance(data, list) and not data: # Free games
+                        data = {"price_overview": {"final": 0, "initial": 0, "discount_percent": 0, "currency": ""}}
+                    
+                    # Attach name from map OR fallout to existing cache name if we have it
+                    resolved_name = name_map.get(appid_str)
+                    if not resolved_name:
+                        # Fallback: check if we ALREADY have a name in the cache that isn't Unknown
+                        old_cached = price_cache.get(appid_str, country_code)
+                        if old_cached and old_cached.get("name") and old_cached.get("name") != "Unknown App":
+                            resolved_name = old_cached["name"]
+                        else:
+                            resolved_name = "Unknown App"
 
-    # Fetch all chunks in parallel (with some concurrency limit if needed, here we just gather)
-    # Using small delay between chunks might help avoid 429
-    chunk_responses = []
-    for chunk in chunks:
-        chunk_responses.append(fetch_chunk(chunk))
-        await asyncio.sleep(0.5) # Gentle rate limiting
+                    data["name"] = resolved_name
+                    
+                    results[appid_str] = {"success": True, "data": data}
+                    price_cache.set(appid_str, country_code, data)
+                    updated_cache = True
+                else:
+                    results[appid_str] = {"success": False, "data": None}
 
-    all_responses = await asyncio.gather(*chunk_responses)
-
-    # 3. Process responses and update cache
-    updated_cache = False
-    for resp in all_responses:
-        if not resp: continue
-        for appid_str, result in resp.items():
-            if result.get("success"):
-                data = result.get("data")
-                # Handle the case where 'data' is empty list [] for free games
-                if isinstance(data, list) and not data:
-                    data = {"price_overview": {"final": 0, "initial": 0, "discount_percent": 0, "currency": ""}}
-                
-                results[appid_str] = {"success": True, "data": data}
-                price_cache.set(appid_str, country_code, data)
-                updated_cache = True
-            else:
-                results[appid_str] = {"success": False, "data": None}
-
-    if updated_cache:
-        price_cache.save_cache()
+        if updated_cache:
+            price_cache.save_cache()
 
     return results
+
+async def get_wishlist_comprehensive(steam_id, country_code="US"):
+    """
+    Retrieves the entire wishlist with full metadata (name, price, discount).
+    Combines the official ID fetcher with our high-performance batch resolver.
+    """
+    # 1. Get IDs using the proven simple API
+    wishlist_items = await get_official_wishlist(steam_id)
+    if not wishlist_items:
+        return []
+        
+    appids = [item.get("appid") for item in wishlist_items]
+    
+    # 2. Resolve all details (names/prices) in one batch
+    details = await resolve_app_details_batch(appids, country_code=country_code)
+    
+    processed = []
+    for item in wishlist_items:
+        appid_str = str(item.get("appid"))
+        res = details.get(appid_str, {})
+        if not res.get("success"):
+            continue
+            
+        data = res.get("data", {})
+        price_info = data.get("price_overview", {})
+        
+        processed.append({
+            "appid": appid_str,
+            "name": data.get("name", "Unknown"),
+            "price": price_info.get("final", 0),
+            "discount": price_info.get("discount_percent", 0),
+            "currency": price_info.get("currency", ""),
+            "is_on_sale": price_info.get("discount_percent", 0) > 0
+        })
+    
+    return processed
+
+async def get_owned_games(steam_id):
+    """
+    Retrieves a user's entire library along with their exact playtime.
+    """
+    if not steam_id or not str(steam_id).isdigit():
+        return []
+
+    if not STEAM_WEB_API_KEY:
+        return []
+
+    url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/"
+    params = {
+        "key": STEAM_WEB_API_KEY,
+        "steamid": steam_id,
+        "include_appinfo": 1,
+        "format": "json"
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await safe_get(client, url, params=params, timeout=20.0)
+            if not response: return []
+            data = response.json()
+            return data.get("response", {}).get("games", [])
+    except Exception:
+        return []
 
 async def get_official_wishlist(steam_id):
     """
@@ -346,32 +459,58 @@ async def get_current_players(appid):
     except Exception:
         return None
 
-async def get_owned_games(steam_id):
+async def get_library_audit(steam_id, country_code="US"):
     """
-    Retrieves a user's entire library along with their exact playtime.
+    Performs a deep audit of the user's library, combining playtime statistics
+    with current market valuation and savings analysis.
     """
-    if not steam_id or not str(steam_id).isdigit():
-        return []
+    games = await get_owned_games(steam_id)
+    if not games: return None
 
-    if not STEAM_WEB_API_KEY:
-        return []
+    appids = [g["appid"] for g in games]
+    details = await resolve_app_details_batch(appids, country_code=country_code)
 
-    url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/"
-    params = {
-        "key": STEAM_WEB_API_KEY,
-        "steamid": steam_id,
-        "include_appinfo": 1,
-        "format": "json"
+    audit = {
+        "total_games": len(games),
+        "total_playtime_hrs": 0,
+        "total_current_value": 0,
+        "total_initial_value": 0,
+        "never_played_count": 0,
+        "currency": "",
+        "top_played": [],
+        "pile_of_shame": []
     }
+
+    processed_games = []
+    for g in games:
+        appid = str(g["appid"])
+        playtime = g.get("playtime_forever", 0) / 60
+        audit["total_playtime_hrs"] += playtime
+        
+        if playtime == 0:
+            audit["never_played_count"] += 1
+            
+        game_details = details.get(appid, {}).get("data") or {}
+        price_info = game_details.get("price_overview", {})
+        
+        curr_price = price_info.get("final", 0)
+        init_price = price_info.get("initial", curr_price)
+        
+        audit["total_current_value"] += curr_price
+        audit["total_initial_value"] += init_price
+        if not audit["currency"]: audit["currency"] = price_info.get("currency", "")
+
+        processed_games.append({
+            "name": game_details.get("name", g.get("name", "Unknown")),
+            "playtime": round(playtime, 1),
+            "appid": appid
+        })
+
+    # Sort and slice
+    processed_games.sort(key=lambda x: x["playtime"], reverse=True)
+    audit["top_played"] = processed_games[:10]
     
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await safe_get(client, url, params=params, timeout=20.0)
-            if not response: return []
-            data = response.json()
-            return data.get("response", {}).get("games", [])
-    except Exception:
-        return []
+    return audit
 
 async def get_app_news(appid, count=3):
     """
