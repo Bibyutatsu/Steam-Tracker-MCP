@@ -57,7 +57,7 @@ Add this to your `claude_desktop_config.json`:
   "mcpServers": {
     "steam-tracker": {
       "command": "npx",
-      "args": ["-y", "@atishay/mcp-proxy", "--url", "https://bibyutatsu-steam-tracker-mcp.hf.space/sse", "--header", "Authorization: Bearer YOUR_TOKEN"]
+      "args": ["-y", "supergateway", "--sse", "https://bibyutatsu-steam-tracker-mcp.hf.space/mcp", "--header", "x-api-key: YOUR_TOKEN"]
     }
   }
 }
