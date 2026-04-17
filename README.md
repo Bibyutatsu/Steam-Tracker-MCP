@@ -1,3 +1,12 @@
+---
+title: Steam Tracker MCP
+emoji: 🎮
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # Steam Price Tracker MCP Server
 
 A powerful Model Context Protocol (MCP) server that transforms Steam into a personalized intelligence tool for price tracking and wishlist monitoring.

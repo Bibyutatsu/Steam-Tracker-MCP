@@ -8,12 +8,29 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: huggingface/hub-sync@v0.1.0
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          github_repo_id: ${{ github.repository }}
-          huggingface_repo_id: Bibyutatsu/steam-tracker-mcp
-          hf_token: ${{ secrets.HF_TOKEN }}
-          repo_type: space
+          python-version: '3.11'
+          
+      - name: Install huggingface_hub
+        run: pip install huggingface_hub
+        
+      - name: Upload to Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -c "
+          from huggingface_hub import HfApi
+          api = HfApi(token='${{ secrets.HF_TOKEN }}')
+          api.upload_folder(
+              folder_path='.',
+              repo_id='Bibyutatsu/steam-tracker-mcp',
+              repo_type='space',
+              delete_patterns=['*.pyc', '__pycache__', '.venv', '.env', '.location_cache']
+          )
+          "
