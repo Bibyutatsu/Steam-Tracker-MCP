@@ -73,11 +73,25 @@ python app.py
 
 ## ☁️ Hosting on Hugging Face Spaces
 
-This server is designed to be hosted 24/7 on Hugging Face Spaces.
-1. Create a new **Python/Docker Space**.
-2. Upload the project files.
-3. Configure your `STEAM_WEB_API_KEY`, `STEAM_ID`, and `STEAM_COUNTRY_CODE` as **Secrets**.
-4. Connect Claude Desktop using your Space's SSE URL: `https://<user>-<space>.hf.space/sse`.
+This server is optimized for 24/7 hosting on Hugging Face Spaces using the **Docker SDK**.
+
+1. **Create Space**: Go to [huggingface.co/new-space](https://huggingface.co/new-space) and select the **Docker** SDK.
+2. **Upload Files**: Upload all project files EXCEPT `.env` and `.venv` (the `Dockerfile` and `.dockerignore` will handle the rest).
+3. **Configure Secrets**: In your Space's **Settings > Variables and secrets**, add:
+   - `STEAM_WEB_API_KEY`: Your Steam API Key.
+   - `STEAM_ID`: Your 64-bit Steam ID.
+   - `STEAM_COUNTRY_CODE`: Your 2-letter country code (optional, e.g., `IN`).
+4. **Connect Claude**: Once "Running", add your Space's SSE URL to your `claude_desktop_config.json`:
+   ```json
+   {
+     "mcpServers": {
+       "steam-tracker": {
+         "url": "https://<your-username>-<space-name>.hf.space/sse"
+       }
+     }
+   }
+   ```
+
 
 ---
 

@@ -1,0 +1,8 @@
+.git
+.venv
+.env
+__pycache__
+*.pyc
+.DS_Store
+.location_cache
+test_steam_api.py
