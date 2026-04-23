@@ -98,11 +98,12 @@ Add a new MCP server in your IDE settings (JSON mode):
 | | `get_bulk_prices` | "Get prices for Elden Ring, Sekiro, and Dark Souls 3." |
 | | `get_top_specials` | "What are the biggest deals on the Steam frontpage?" |
 | **Library**| `get_my_wishlist` | "Sort my wishlist by the highest discount percentage." |
-| | `get_library_valuation`| "Calculate my total library value and 'Pile of Shame'." |
-| | `analyze_my_library`| "Analyze my library and tell me my top 5 games by playtime." |
-| **Social** | `get_friends` | "Is anyone currently playing Counter-Strike?" |
-| | `get_player_info` | "Check the status of SteamID 765611..." |
-| **Stats** | `get_achievement_stats`| "Show me my rarest achievements in Cyberpunk 2077." |
+| | `audit_library` | "Analyze my library value, playtime, and 'Pile of Shame'." |
+| | `get_recent_activity` | "Summarize my gaming sessions over the last 2 weeks." |
+| **Social** | `get_social_intelligence` | "Which of my friends are currently playing something?" |
+| | `find_mutual_games` | "Find games I can play co-op with [FriendName]." |
+| | `search_steam_profile` | "Check the status and profile card for [GabeNewell]." |
+| **Stats** | `get_achievement_rarity` | "Show me my rarest achievements in Cyberpunk 2077." |
 | | `get_live_player_count`| "How many people are playing Helldivers 2 right now?" |
 | **News** | `get_game_news` | "Summarize the latest patch notes for Dota 2." |
 | **Price IQ** | `get_historical_stats` | "What is the all-time low for Elden Ring?" |

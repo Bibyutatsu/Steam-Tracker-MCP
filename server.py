@@ -6,9 +6,9 @@ from steam_api import (
     search_games, format_price, get_wishlist_comprehensive, 
     get_player_summaries, resolve_app_details_batch,
     get_current_players, get_owned_games, get_app_news, resolve_vanity_url,
-    get_recently_played_games, get_player_achievements,
-    get_global_achievement_percentages, get_friend_list, get_featured_categories,
-    get_library_audit, itad_client
+    get_recently_played_games, get_featured_categories,
+    get_library_audit, itad_client, get_social_status, get_rare_achievements,
+    get_mutual_games
 )
 from utils import get_country_code
 
@@ -232,6 +232,157 @@ async def audit_library() -> str:
     for g in audit["top_played"]:
         response.append(f"- **{g['name']}**: {g['playtime']} hours")
         
+    return "\n".join(response)
+
+@mcp.tool()
+async def get_recent_activity(count: int = 5) -> str:
+    """
+    Get a breakdown of your gaming activity over the last 14 days.
+    """
+    if not STEAM_ID:
+        return "STEAM_ID not configured."
+        
+    games = await get_recently_played_games(STEAM_ID, count)
+    if not games:
+        return "No recent activity found in the last 2 weeks."
+        
+    response = ["## 🕒 Recent Gaming Activity (Last 14 Days)\n"]
+    for g in games:
+        name = g.get("name")
+        two_weeks = g.get("playtime_2weeks", 0) / 60
+        total = g.get("playtime_forever", 0) / 60
+        response.append(f"- **{name}**")
+        response.append(f"  - Played this session: **{two_weeks:.1f} hours**")
+        response.append(f"  - Total playtime: **{total:.1f} hours**")
+        
+    return "\n".join(response)
+
+@mcp.tool()
+async def get_social_intelligence() -> str:
+    """
+    See which friends are online and what they are playing right now.
+    Excellent for finding someone to play with.
+    """
+    if not STEAM_ID:
+        return "STEAM_ID not configured."
+        
+    statuses = await get_social_status(STEAM_ID)
+    if not statuses:
+        return "Could not retrieve friend statuses."
+        
+    response = ["## 👥 Steam Social Intelligence\n"]
+    
+    in_game = [s for s in statuses if s["status"] == "In-Game"]
+    online = [s for s in statuses if s["status"] == "Online"]
+    
+    if in_game:
+        response.append("### 🎮 Currently In-Game")
+        for s in in_game:
+            response.append(f"- **{s['name']}** is playing **{s['game']}**")
+        response.append("")
+            
+    if online:
+        response.append("### 🟢 Online")
+        response.append(", ".join([s["name"] for s in online]))
+        response.append("")
+        
+    if not in_game and not online:
+        response.append("Everyone is currently offline.")
+        
+    return "\n".join(response)
+
+@mcp.tool()
+async def find_mutual_games(friend_steam_id: str) -> str:
+    """
+    Compare your library with a friend's to find games you both own.
+    Provide the friend's 64-bit SteamID or custom URL name.
+    """
+    if not STEAM_ID:
+        return "STEAM_ID not configured."
+        
+    # Resolve vanity URL if needed
+    target_id = friend_steam_id
+    if not friend_steam_id.isdigit():
+        resolved = await resolve_vanity_url(friend_steam_id)
+        if not resolved:
+            return f"Could not resolve SteamID for '{friend_steam_id}'."
+        target_id = resolved
+        
+    mutual = await get_mutual_games(STEAM_ID, target_id)
+    if not mutual:
+        return "No mutual games found or friend's profile is private."
+        
+    response = [f"## 🤝 Mutual Games with {friend_steam_id}\n"]
+    response.append(f"Found **{len(mutual)}** games in common:")
+    for game in sorted(mutual):
+        response.append(f"- {game}")
+        
+    return "\n".join(response)
+
+@mcp.tool()
+async def get_achievement_rarity(query: str) -> str:
+    """
+    Highlight rare achievements you've earned in a specific game.
+    Provide game name or AppID.
+    """
+    if not STEAM_ID:
+        return "STEAM_ID not configured."
+        
+    # Resolve appid
+    appid = None
+    game_name = query
+    if query.isdigit():
+        appid = int(query)
+    else:
+        search = await search_games(query)
+        if search:
+            appid = search[0]["id"]
+            game_name = search[0]["name"]
+            
+    if not appid:
+        return f"Could not find game matching '{query}'."
+        
+    rare = await get_rare_achievements(STEAM_ID, appid)
+    if not rare:
+        return f"No rare achievements (< 15%) found for **{game_name}**."
+        
+    response = [f"## 🏆 Rare Achievements in {game_name}\n"]
+    response.append("Achievements you've earned that few others have:")
+    for a in rare:
+        response.append(f"- **{a['name']}** ({a['percent']}% rarity)")
+        if a['description']:
+            response.append(f"  - *{a['description']}*")
+            
+    return "\n".join(response)
+
+@mcp.tool()
+async def search_steam_profile(query: str) -> str:
+    """
+    Look up a Steam user by their name or vanity URL and see their profile overview.
+    """
+    target_id = query
+    if not query.isdigit():
+        target_id = await resolve_vanity_url(query)
+        if not target_id:
+            return f"Could not find a Steam profile for '{query}'."
+            
+    summaries = await get_player_summaries(target_id)
+    if not summaries:
+        return f"Profile data for '{query}' is not available."
+        
+    p = summaries[0]
+    name = p.get("personaname")
+    url = p.get("profileurl")
+    state = p.get("personastate", 0)
+    status_map = {0: "Offline", 1: "Online", 2: "Busy", 3: "Away", 4: "Snooze"}
+    status = status_map.get(state, "Unknown")
+    if "gameid" in p: status = f"Playing **{p.get('gameextrainfo')}**"
+    
+    response = [f"## 👤 Steam Profile: {name}\n"]
+    response.append(f"- **Status**: {status}")
+    response.append(f"- **SteamID**: `{target_id}`")
+    response.append(f"- **Profile Link**: [View on Steam]({url})")
+    
     return "\n".join(response)
 
 

@@ -646,6 +646,85 @@ async def get_global_achievement_percentages(appid):
     except Exception:
         return []
 
+async def get_rare_achievements(steam_id, appid, threshold=15.0):
+    """
+    Identifies rare achievements earned by a player for a specific game.
+    """
+    p_ach_task = get_player_achievements(steam_id, appid)
+    g_ach_task = get_global_achievement_percentages(appid)
+    
+    p_achs_list, g_achs_list = await asyncio.gather(p_ach_task, g_ach_task)
+    
+    if not p_achs_list or not g_achs_list:
+        return []
+        
+    p_achs = {a["apiname"]: a for a in p_achs_list if a.get("achieved") == 1}
+    rare = []
+    
+    for g_ach in g_achs_list:
+        apiname = g_ach.get("name")
+        percent = float(g_ach.get("percent", 100))
+        
+        if apiname in p_achs and percent <= threshold:
+            rare.append({
+                "name": p_achs[apiname].get("name", apiname),
+                "percent": round(percent, 2),
+                "description": p_achs[apiname].get("description", "")
+            })
+            
+    return sorted(rare, key=lambda x: x["percent"])
+
+async def get_social_status(steam_id):
+    """
+    Summarizes friend statuses, highlighting those currently in-game.
+    """
+    friends = await get_friend_list(steam_id)
+    if not friends:
+        return []
+        
+    friend_ids = ",".join([f["steamid"] for f in friends])
+    summaries = await get_player_summaries(friend_ids)
+    
+    processed = []
+    for p in summaries:
+        state = p.get("personastate", 0)
+        status_label = "Offline"
+        if state == 1: status_label = "Online"
+        elif state == 2: status_label = "Busy"
+        elif state == 3: status_label = "Away"
+        elif state == 4: status_label = "Snooze"
+        
+        if "gameid" in p:
+            status_label = "In-Game"
+            
+        processed.append({
+            "name": p.get("personaname"),
+            "steamid": p.get("steamid"),
+            "status": status_label,
+            "game": p.get("gameextrainfo", "None"),
+            "avatar": p.get("avatar")
+        })
+        
+    return processed
+
+async def get_mutual_games(steam_id1, steam_id2):
+    """
+    Finds games owned by both users.
+    """
+    task1 = get_owned_games(steam_id1)
+    task2 = get_owned_games(steam_id2)
+    
+    res1, res2 = await asyncio.gather(task1, task2)
+    
+    if not res1 or not res2:
+        return []
+        
+    set1 = {g["appid"]: g["name"] for g in res1}
+    set2 = {g["appid"] for g in res2}
+    
+    mutual_ids = set1.keys() & set2
+    return [set1[aid] for aid in mutual_ids]
+
 async def get_friend_list(steam_id, relationship="friend"):
     """
     Returns the friend list of a Steam user.
